@@ -1,0 +1,14 @@
+{
+  "asrModelSize": "auto",
+  "asrComputeType": "auto",
+  "defaultMinScore": 90,
+  "enableHighPassFilter": true,
+  "enableAgc": true,
+  "enableSilenceTrim": true,
+  "enableProsodyCoaching": true,
+  "whisperBiasPrompt": false,
+  "ttsVoiceFemale": "es-PA-MargaritaNeural",
+  "ttsVoiceMale": "es-PA-RobertoNeural",
+  "ttsVoiceEnglishFemale": "en-US-AriaNeural",
+  "ttsVoiceEnglishMale": "en-US-GuyNeural"
+}

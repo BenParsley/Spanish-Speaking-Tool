@@ -1,0 +1,1475 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PA - ES A1 Certificate · Speech Only</title>
+  <link rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2360a5fa' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z'/%3E%3Cpath d='M19 10v2a7 7 0 0 1-14 0v-2'/%3E%3Cline x1='12' y1='19' x2='12' y2='22'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=2" />
+</head>
+
+<body class="is-speak-only">
+  <div class="app-shell">
+    <!-- Top Learning Header -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>Panamanian Spanish · A1</h1>
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <!-- Active Daily Study Timer Pill (Pauses after 10s without an answer) -->
+        <div id="study-timer-pill" class="study-timer-pill is-paused hidden"
+          title="Tracks active study time today. Pauses automatically if no question is answered for 10 seconds.">
+          <span id="study-timer-dot" class="study-timer-dot" aria-hidden="true"></span>
+          <span class="study-timer-meta">
+            <span id="study-timer-value" class="study-timer-value">0m 00s</span>
+            <span id="study-timer-state" class="study-timer-state">Paused</span>
+          </span>
+        </div>
+
+        <button id="session-summary-btn" class="settings-open-btn" type="button" title="View Current Session Summary">
+          <span>Summary</span>
+        </button>
+
+        <!-- Direction Indicator / Switch -->
+        <div class="stage-seg topbar-flag-seg hidden" role="group" aria-label="Prompt Direction">
+          <button id="dir-num-to-es" class="stage-seg-btn stage-seg-btn--flag active" type="button" aria-pressed="true"
+            title="Production: English / Numeral to Panamanian Spanish">
+            <svg class="flag-svg" width="14" height="10" viewBox="0 0 16 11" aria-hidden="true">
+              <rect width="16" height="11" fill="#012169" />
+              <path d="M0 0L16 11M16 0L0 11" stroke="#ffffff" stroke-width="2.2" />
+              <path d="M0 0L16 11M16 0L0 11" stroke="#c8102e" stroke-width="1.1" />
+              <path d="M8 0V11M0 5.5H16" stroke="#ffffff" stroke-width="3.2" />
+              <path d="M8 0V11M0 5.5H16" stroke="#c8102e" stroke-width="1.8" />
+            </svg>
+            <span class="dir-flag-label">EN→PA</span>
+          </button>
+          <button id="dir-es-to-num" class="stage-seg-btn stage-seg-btn--flag" type="button" aria-pressed="false"
+            title="Recognition: Panamanian Spanish to English / Numeral">
+            <svg class="flag-svg" width="14" height="10" viewBox="0 0 16 11" aria-hidden="true">
+              <rect width="16" height="11" fill="#ffffff" />
+              <rect x="8" y="0" width="8" height="5.5" fill="#d21034" />
+              <rect x="0" y="5.5" width="8" height="5.5" fill="#005293" />
+              <circle cx="4" cy="2.75" r="1.2" fill="#005293" />
+              <circle cx="12" cy="8.25" r="1.2" fill="#d21034" />
+            </svg>
+            <span class="dir-flag-label">PA→EN</span>
+          </button>
+        </div>
+
+        <!-- Settings Dropdown -->
+        <div class="settings-dropdown-container">
+          <button id="settings-toggle" class="settings-open-btn" type="button" title="Open Learning Preferences"
+            aria-label="Settings" aria-expanded="false">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+            <span>Settings</span>
+          </button>
+
+          <div id="settings-popover" class="settings-popover hidden" role="dialog" aria-label="Settings">
+            <div class="settings-popover-header">
+              <span>Learning Preferences</span>
+            </div>
+
+            <div class="settings-field">
+              <label for="speed-select">Auto-Advance Wait</label>
+              <select id="speed-select" class="custom-select">
+                <option value="0.5">0.5 seconds</option>
+                <option value="1" selected>1 second</option>
+                <option value="1.5">1.5 seconds</option>
+                <option value="2">2 seconds</option>
+                <option value="3">3 seconds</option>
+                <option value="4">4 seconds</option>
+                <option value="5">5 seconds</option>
+              </select>
+            </div>
+
+            <div class="settings-field">
+              <div class="settings-label-row">
+                <label for="volume-range">Voice Volume</label>
+                <span id="volume-value" class="settings-value-badge">100%</span>
+              </div>
+              <input id="volume-range" class="custom-range" type="range" min="0" max="1" step="0.05" value="1" />
+            </div>
+
+            <div class="settings-field">
+              <div class="settings-label-row">
+                <label for="sfx-volume-range">Sound Effects Volume</label>
+                <span id="sfx-volume-value" class="settings-value-badge">70%</span>
+              </div>
+              <input id="sfx-volume-range" class="custom-range" type="range" min="0" max="1" step="0.05" value="0.7" />
+            </div>
+
+            <div class="settings-field">
+              <label for="correct-sound-select">Correct Answer Chime</label>
+              <div class="settings-select-row">
+                <select id="correct-sound-select" class="custom-select">
+                  <option value="1" selected>1. High Marimba</option>
+                  <option value="2">2. Soft Bell</option>
+                  <option value="3">3. Warm Triad</option>
+                  <option value="4">4. Crystal Drop</option>
+                  <option value="5">5. Harp Pluck</option>
+                  <option value="6">6. Bamboo Flute</option>
+                  <option value="7">7. Glass Marimba</option>
+                  <option value="8">8. Morning Dew</option>
+                  <option value="9">9. Velvet Chord</option>
+                  <option value="10">10. Celesta Spark</option>
+                  <option value="11">11. Zen Bowl</option>
+                </select>
+                <button id="test-correct-sound-btn" class="settings-test-btn" type="button"
+                  title="Preview Correct Sound">Play</button>
+              </div>
+            </div>
+
+            <div class="settings-field">
+              <label for="incorrect-sound-select">Try-Again Sound</label>
+              <div class="settings-select-row">
+                <select id="incorrect-sound-select" class="custom-select">
+                  <option value="1" selected>1. Low Marimba</option>
+                  <option value="2">2. Soft Thud</option>
+                  <option value="3">3. Muted Woodblock</option>
+                  <option value="4">4. Gentle Low Drop</option>
+                  <option value="5">5. Dull Buzz</option>
+                  <option value="6">6. Double Tap</option>
+                  <option value="7">7. Warm Minor</option>
+                  <option value="8">8. Hollow Knock</option>
+                  <option value="9">9. Faded Buzzer</option>
+                  <option value="10">10. Soft Sigh</option>
+                </select>
+                <button id="test-incorrect-sound-btn" class="settings-test-btn" type="button"
+                  title="Preview Incorrect Sound">Play</button>
+              </div>
+            </div>
+
+            <div class="settings-divider"></div>
+
+            <div class="settings-field">
+              <label for="mic-device-select">Microphone (es-PA)</label>
+              <select id="mic-device-select" class="custom-select">
+                <option value="">Default Microphone</option>
+              </select>
+              <div class="mic-test-actions">
+                <button id="test-tts-btn" class="settings-test-btn" type="button"
+                  title="Test Spanish voice playback volume">Test Voice</button>
+                <button id="test-mic-btn" class="settings-test-btn" type="button" title="Record microphone test">Record
+                  Mic</button>
+                <button id="test-mic-playback-btn" class="settings-test-btn" type="button" disabled
+                  title="Play back mic recording">Play Mic</button>
+              </div>
+              <div class="mic-meter-track" aria-hidden="true">
+                <div id="mic-test-meter-fill" class="mic-meter-fill"></div>
+              </div>
+              <div id="mic-test-status" class="mic-test-status"></div>
+            </div>
+
+            <div class="settings-field">
+              <label for="pronunciation-engine-select">Pronunciation Engine</label>
+              <div class="settings-select-row">
+                <select id="pronunciation-engine-select" class="custom-select">
+                  <option value="local" selected>Local Hybrid (Free · es-PA)</option>
+                  <option value="browser">Browser Speech-to-Text</option>
+                </select>
+                <button id="local-scorer-test-btn" class="settings-test-btn" type="button"
+                  title="Check if local scorer is running on 127.0.0.1:8765">Test Local</button>
+              </div>
+              <div id="local-scorer-status" class="mic-test-status"></div>
+            </div>
+
+            <div class="settings-field">
+              <label for="scoring-strictness-select">Scoring Strictness</label>
+              <select id="scoring-strictness-select" class="custom-select">
+                <option value="90" selected>Strict (90+ · Certification)</option>
+                <option value="80">Standard (80+)</option>
+                <option value="70">Warmup (70+)</option>
+              </select>
+            </div>
+
+            <div class="settings-field">
+              <label for="tts-engine-select">Spanish Voice Engine</label>
+              <select id="tts-engine-select" class="custom-select">
+                <option value="browser" selected>Browser Voice (Built-in)</option>
+                <option value="local">Local Panamanian Neural (es-PA)</option>
+              </select>
+            </div>
+
+            <div class="settings-row">
+              <span class="settings-row-label">Hands-Free Auto-Stop (VAD)</span>
+              <button id="hands-free-toggle" class="settings-toggle-btn" type="button" aria-pressed="false"
+                title="Automatically stop recording after a short silence">
+                <span id="hands-free-status">Off</span>
+              </button>
+            </div>
+
+            <div class="settings-field">
+              <label for="hands-free-silence-select">Hands-Free Silence Stop</label>
+              <select id="hands-free-silence-select" class="custom-select">
+                <option value="900">0.9s (Fast)</option>
+                <option value="1300" selected>1.3s (Normal)</option>
+                <option value="1800">1.8s (Relaxed)</option>
+                <option value="2400">2.4s (Slow)</option>
+              </select>
+            </div>
+
+            <div class="settings-field">
+              <label for="hands-free-incorrect-select">Hands-Free After 2 Misses</label>
+              <select id="hands-free-incorrect-select" class="custom-select">
+                <option value="auto-retry" selected>Auto-Retry Once</option>
+                <option value="voice-choice">Voice Choice ("retry" / "next")</option>
+                <option value="auto-continue">Auto-Continue to Next</option>
+              </select>
+            </div>
+
+            <div class="settings-field">
+              <label for="hands-free-cooldown-select">Hands-Free Echo Cooldown</label>
+              <select id="hands-free-cooldown-select" class="custom-select">
+                <option value="250">250 ms (Headphones)</option>
+                <option value="350" selected>350 ms (Default)</option>
+                <option value="550">550 ms (Speakers)</option>
+              </select>
+            </div>
+
+            <div class="settings-row">
+              <span class="settings-row-label">Listening Earcon Chimes</span>
+              <button id="hands-free-earcons-toggle" class="settings-toggle-btn active" type="button"
+                aria-pressed="true" title="Play a soft chime when Hands-Free opens the mic or pauses">
+                <span id="hands-free-earcons-status">On</span>
+              </button>
+            </div>
+
+            <div class="settings-row">
+              <span class="settings-row-label">Pause at Stage Complete</span>
+              <button id="hands-free-pause-stage-toggle" class="settings-toggle-btn" type="button" aria-pressed="false"
+                title="Pause Hands-Free Mode when a stage finishes so you can review stats">
+                <span id="hands-free-pause-stage-status">Off</span>
+              </button>
+            </div>
+
+            <div class="settings-row">
+              <span class="settings-row-label">Shadowing (Hear First)</span>
+              <button id="shadowing-toggle" class="settings-toggle-btn" type="button" aria-pressed="false"
+                title="Play native Spanish pronunciation before each prompt">
+                <span id="shadowing-status">Off</span>
+              </button>
+            </div>
+
+            <div class="settings-row">
+              <span class="settings-row-label">Push-to-Talk (Hold Space)</span>
+              <button id="push-to-talk-toggle" class="settings-toggle-btn active" type="button" aria-pressed="true"
+                title="Hold Space to record and release Space to score immediately">
+                <span id="push-to-talk-status">On</span>
+              </button>
+            </div>
+
+            <div class="settings-divider"></div>
+
+            <!-- Active Unit Stage Summary -->
+            <div id="progression-panel" class="progression-panel">
+              <div class="progression-stage-row">
+                <span id="progression-stage-label" class="progression-stage-label">Stage 1/3</span>
+                <span id="progression-stage-stats" class="progression-stage-stats">0 / 32</span>
+              </div>
+              <div class="progression-bar-track">
+                <div id="progression-bar-fill" class="progression-bar-fill" style="width: 0%"></div>
+              </div>
+            </div>
+
+            <div class="settings-divider"></div>
+
+            <div class="settings-row">
+              <span class="settings-row-label">Dark Mode</span>
+              <button id="theme-toggle" class="settings-toggle-btn active" type="button" aria-pressed="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="4" />
+                  <path
+                    d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+                </svg>
+                <span id="theme-status">On</span>
+              </button>
+            </div>
+
+            <div class="settings-row">
+              <span class="settings-row-label">Blur Locked</span>
+              <button id="blur-locked-toggle" class="settings-toggle-btn active" type="button" aria-pressed="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                <span id="blur-locked-status">On</span>
+              </button>
+            </div>
+
+            <div class="settings-divider"></div>
+
+            <div class="settings-row">
+              <span class="settings-row-label">Backups &amp; Data</span>
+              <button id="data-management-btn" class="settings-toggle-btn" type="button">
+                <span>Manage</span>
+              </button>
+            </div>
+
+            <div class="settings-divider"></div>
+
+            <!-- Testing & QA Section -->
+            <div id="settings-testing-header" class="settings-section-header">
+              <span>Testing</span>
+              <span class="settings-section-tag">QA Tools</span>
+            </div>
+
+            <div class="settings-row">
+              <span class="settings-row-label">QA Diagnostics &amp; Suite</span>
+              <button id="open-testing-suite-btn" class="settings-toggle-btn active" type="button"
+                title="Open full QA Test Runner with Expected vs Actual checks, inspector, and UI triggers">
+                <span>Open Suite</span>
+              </button>
+            </div>
+
+            <div class="settings-row">
+              <span class="settings-row-label">Show Expected Answer</span>
+              <button id="test-show-expected-toggle" class="settings-toggle-btn" type="button" aria-pressed="false"
+                title="Display the expected Spanish answer, fill key, and mode requirements on the Learn card">
+                <span id="test-show-expected-status">Off</span>
+              </button>
+            </div>
+
+            <div class="settings-field">
+              <label>Simulate Pronunciation Verdict</label>
+              <div class="testing-btn-grid">
+                <button id="test-sim-pass-btn" class="settings-test-btn" type="button"
+                  title="Expected: 96% pass, +1 correct, green chime, auto-advance">Pass 96%</button>
+                <button id="test-sim-polish-btn" class="settings-test-btn" type="button"
+                  title="Expected: 84% pass + 'Pronunciation could be improved'">Polish 84%</button>
+                <button id="test-sim-fail-btn" class="settings-test-btn" type="button"
+                  title="Expected: 42% miss -> Attempt 1/2 or immediate Exam Incorrect Screen">Fail 42%</button>
+              </div>
+            </div>
+
+            <div class="settings-field">
+              <label for="test-jump-topic-select">Jump to Topic / Stage / Exam</label>
+              <select id="test-jump-topic-select" class="custom-select" aria-label="Test jump topic"></select>
+              <div class="settings-select-row">
+                <select id="test-jump-stage-select" class="custom-select" aria-label="Test jump stage"></select>
+                <button id="test-jump-go-btn" class="settings-test-btn" type="button"
+                  title="Expected: unlocks selected topic/stage and jumps straight there">Jump</button>
+              </div>
+            </div>
+
+            <div class="settings-field">
+              <label>Progression &amp; Exam Shortcuts</label>
+              <div class="testing-btn-grid testing-btn-grid--2col">
+                <button id="test-bypass-practice-btn" class="settings-test-btn" type="button"
+                  title="Expected: marks Practice gate complete and starts Graded Mode">Skip Practice</button>
+                <button id="test-near-stage-end-btn" class="settings-test-btn" type="button"
+                  title="Expected: sets 1 answer left (or 26/29 in Exam) so next answer triggers completion/fail">1 Left / 26-29</button>
+                <button id="test-unlock-all-btn" class="settings-test-btn" type="button"
+                  title="Expected: unlocks all 8 A1 units">Unlock All 8</button>
+                <button id="test-trigger-exam-fail-btn" class="settings-test-btn" type="button"
+                  title="Expected: scores 26/30 (87%) in Topic Exam and opens Failed modal">Test Exam Fail</button>
+              </div>
+            </div>
+
+            <div id="testing-quick-status" class="mic-test-status hidden" role="status" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Guidebook & Primary View Navigation -->
+    <div class="control-bar">
+      <div id="guidebook" class="category-nav" aria-label="Guidebook"></div>
+      <nav class="view-nav" aria-label="Primary View">
+        <button id="nav-play" class="control-pill active" type="button" aria-pressed="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
+          <span>Learn</span>
+        </button>
+        <button id="nav-path" class="control-pill" type="button" aria-pressed="false">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="6" cy="19" r="3" />
+            <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15" />
+            <circle cx="18" cy="5" r="3" />
+          </svg>
+          <span>Learning Path</span>
+        </button>
+        <button id="nav-stats" class="control-pill" type="button" aria-pressed="false">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10" />
+            <line x1="12" y1="20" x2="12" y2="4" />
+            <line x1="6" y1="20" x2="6" y2="14" />
+          </svg>
+          <span>Calendar and Stats</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- View 1: Learn Workspace -->
+    <div id="view-play" class="view-pane is-visible">
+      <div class="learn-workspace">
+        <!-- Main Interactive Lesson Card -->
+        <main id="stage-card" class="stage-card" aria-live="polite">
+          <!-- Clear Guided Progression Header -->
+          <div id="stage-progression-hud" class="stage-progression-hud">
+            <div class="hud-top-row">
+              <div class="hud-left-group">
+                <button id="stage-educate-btn" class="stage-educate-btn" type="button"
+                  title="View rules &amp; key patterns for this topic">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                  </svg>
+                  <span id="stage-educate-label">Topic Rules</span>
+                  <span id="stage-educate-new-badge" class="stage-educate-new-badge hidden">New</span>
+                </button>
+                <button id="practice-mode-btn" class="stage-educate-btn" type="button" aria-pressed="false"
+                  title="Study mode: shows English + Spanish with audio playback and ungraded speaking practice">
+                  <span id="practice-mode-label">Practice Mode</span>
+                </button>
+                <button id="hands-free-mode-btn" class="stage-educate-btn hands-free-hud-btn" type="button"
+                  aria-pressed="false"
+                  title="Continuous hands-free speaking loop with adaptive auto-listen &amp; voice commands (Alt+H)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="22" />
+                  </svg>
+                  <span id="hands-free-mode-label">Hands-Free</span>
+                </button>
+                <span id="hud-stage-title" class="hud-stage-title is-clickable" role="button" tabindex="0"
+                  aria-expanded="false" title="Click to view Spanish &amp; English covered in this stage">A1.1 -
+                  Greetings</span>
+              </div>
+              <div id="stage-skill-area" class="stage-skill-controls" aria-label="Speak Stage Progress">
+                <div id="stage-skill-track" class="stage-skill-track" role="status" aria-live="polite">
+                  <span class="skill-step-pill is-active" data-skill="speak"><span
+                      class="skill-step-name">Speak</span><span class="skill-step-count">0/8</span></span>
+                </div>
+                <span id="hud-srs-due-badge" class="hud-srs-due-badge hidden"
+                  title="Spaced-repetition items currently due for review">0 due</span>
+                <button id="hud-stage-seen" class="hud-stage-seen" type="button"
+                  title="Click to view which words/phrases have been seen in Speak">0/12 seen</button>
+              </div>
+            </div>
+            <div id="topic-exam-banner" class="topic-exam-banner hidden" role="status" aria-live="polite"></div>
+            <div id="testing-expected-banner" class="testing-expected-banner hidden" role="status" aria-live="polite"></div>
+            <div id="weak-drill-banner" class="weak-drill-banner hidden">
+              <span id="weak-drill-banner-text">Struggling Words Drill Active</span>
+              <button id="weak-drill-exit-btn" class="settings-test-btn" type="button">Exit Drill</button>
+            </div>
+            <div id="scorer-loading-banner" class="scorer-loading-banner hidden" role="status" aria-live="polite">
+              <span>Loading AI speech models on 127.0.0.1:8765…</span>
+            </div>
+            <div id="hud-unlock-req-line" class="hud-unlock-req-line" role="status" aria-live="polite"></div>
+            <div class="hud-bar-track">
+              <div id="hud-progression-fill" class="hud-bar-fill" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <!-- Active Lesson Content -->
+          <div id="play-active-content" class="play-active-content">
+
+            <div id="stage-body" class="stage-body">
+              <!-- Question Prompt Display -->
+              <div class="prompt-zone">
+                <div id="prompt-stat-pin" class="prompt-stat-pin hidden" aria-live="polite"></div>
+                <div class="prompt-hero">
+                  <div id="prompt-value" class="prompt-value">hola</div>
+                  <div id="prompt-subtext" class="prompt-subtext hidden"></div>
+                  <div id="structure-pattern-cue" class="structure-pattern-cue hidden" role="note" aria-live="polite"></div>
+                  <div id="slot-example-cue" class="slot-example-cue hidden" role="note" aria-live="polite"></div>
+                  <div id="slot-options-bar" class="slot-options-bar hidden">
+                    <label id="slot-options-label" class="slot-options-label" for="slot-options-select">15 common
+                      Spanish answers:</label>
+                    <select id="slot-options-select" class="slot-options-select"
+                      aria-label="Choose from 15 common Spanish answers"></select>
+                  </div>
+                  <div id="memory-tip-card" class="memory-tip-card hidden" role="note" aria-live="polite"></div>
+                  <div id="hands-free-inline-intro" class="hands-free-inline-intro hidden" role="status"
+                    aria-live="polite"></div>
+                  <div id="practice-controls-bar" class="practice-controls-bar hidden"
+                    aria-label="Practice Mode Audio Controls">
+                    <button id="practice-hear-btn" class="practice-audio-btn" type="button"
+                      title="Play native Spanish pronunciation (Alt+S)">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                      </svg>
+                      <span>Hear Spanish</span>
+                    </button>
+                    <button id="practice-hear-slow-btn" class="settings-test-btn" type="button"
+                      title="Hear Spanish at 0.75x slow speed">Hear Slowly (0.75x)</button>
+                    <button id="practice-hear-words-btn" class="settings-test-btn" type="button"
+                      title="Hear each individual word with a clear pause between words">Word by Word</button>
+                    <button id="practice-new-variation-btn" class="settings-test-btn hidden" type="button"
+                      title="Load another fill-word variation for this sentence structure">New Variation ↻</button>
+                    <button id="practice-next-btn" class="settings-test-btn practice-next-btn" type="button"
+                      title="Move to the next word or phrase (Enter)">Next Word →</button>
+                  </div>
+                  <div id="audio-controls-row" class="audio-controls-row hidden">
+                    <button id="speak-btn" class="speak-pill" type="button" title="Play audio (Alt+S)">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                      </svg>
+                      <span id="speak-btn-label">Play Audio</span>
+                    </button>
+                    <button id="speak-slow-btn" class="speak-slow-btn" type="button" title="Play slowly (Alt+Shift+S)">
+                      Play Slowly
+                    </button>
+                  </div>
+                  <button id="speak-compare-btn" class="speak-compare-btn hidden" type="button"
+                    title="Listen to the Spanish pronunciation to compare">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                    </svg>
+                    <span>Hear Spanish</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Answer Input & Pronunciation Studio -->
+              <div class="interaction-zone">
+                <div id="hands-free-status-bar" class="hands-free-status-bar hidden" role="status" aria-live="polite">
+                  <div class="hands-free-status-left">
+                    <span id="hands-free-phase-pill" class="hands-free-phase-pill">Listening…</span>
+                    <span id="hands-free-cmd-hint" class="hands-free-cmd-hint">Say: "repeat" · "skip" · "slower" ·
+                      "pause"</span>
+                  </div>
+                  <div class="hands-free-bar-actions">
+                    <button id="hands-free-volume-fix-btn" class="settings-test-btn hidden" type="button"
+                      title="Set Voice Volume to 80% for Eyes-Free prompts">Unmute 80%</button>
+                    <button id="hands-free-pause-btn" class="settings-test-btn" type="button"
+                      title="Pause or resume Hands-Free Mode (Space)">Pause</button>
+                    <button id="hands-free-exit-btn" class="settings-test-btn" type="button"
+                      title="Exit Hands-Free Mode">Exit</button>
+                  </div>
+                </div>
+                <div id="type-section" class="type-section">
+                  <div class="input-shell is-speak-mode">
+                    <input id="answer-input" class="answer-input hidden" type="text" autocomplete="off"
+                      autocapitalize="off" spellcheck="false" />
+                    <button id="mic-btn" class="mic-btn" type="button" title="Record pronunciation (Alt+M)"
+                      aria-label="Record pronunciation">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                        <line x1="12" y1="19" x2="12" y2="22" />
+                      </svg>
+                      <span id="mic-btn-label">Speak</span>
+                    </button>
+                    <div id="speak-meter-track" class="speak-meter-track" aria-hidden="true">
+                      <div id="voice-meter-fill" class="mic-meter-fill"></div>
+                      <div id="vad-threshold-marker" class="vad-threshold-marker hidden"></div>
+                    </div>
+                    <button id="voice-cancel-btn" class="voice-cancel-btn hidden" type="button"
+                      title="Cancel recording mid-speech without submitting (Esc)">
+                      <span>Cancel</span>
+                    </button>
+                    <button id="voice-redo-btn" class="voice-inline-btn" type="button"
+                      title="Redo your audio recording">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                        <path d="M3 3v5h5" />
+                      </svg>
+                      <span>Redo</span>
+                    </button>
+                    <button id="skip-question-btn" class="skip-question-btn" type="button"
+                      title="Skip this question, hear the correct Spanish, and move on">
+                      <span>Skip →</span>
+                    </button>
+                    <button id="hint-btn" class="btn-secondary" type="button" disabled
+                      title="Speak the word correctly — after 2 incorrect attempts you can review or try again">
+                      Attempts 0/2
+                    </button>
+                  </div>
+
+                  <div id="type-answer-feedback" class="type-answer-feedback">Feedback bar</div>
+
+                  <div class="speak-coaching-row">
+                    <div id="pronunciation-phoneme-strip" class="pronunciation-phoneme-strip hidden"
+                      aria-label="Phoneme score breakdown"></div>
+                    <div id="post-speak-actions" class="post-speak-actions hidden">
+                      <button id="play-my-audio-btn" class="settings-test-btn" type="button"
+                        title="Listen to your recorded pronunciation">Play Mine</button>
+                      <button id="play-native-audio-btn" class="settings-test-btn" type="button"
+                        title="Listen to native Spanish pronunciation">Play Spanish</button>
+                      <button id="play-native-slow-btn" class="settings-test-btn" type="button"
+                        title="Hear native Spanish slowly (0.75x)">Hear Slowly</button>
+                      <button id="play-native-words-btn" class="settings-test-btn" type="button" aria-expanded="false"
+                        title="Show the phrase so you can click any specific word to hear it">Word by Word</button>
+                    </div>
+                  </div>
+                  <div id="post-speak-word-strip" class="post-speak-word-strip hidden" role="region"
+                    aria-label="Click any Spanish word to hear it"></div>
+                  <div id="audio-quality-warning" class="audio-quality-warning hidden" role="status"></div>
+                  <div id="panama-phonetics-tip" class="panama-phonetics-tip hidden" role="status"></div>
+                </div>
+
+                <!-- Auto-Advance Progress Bar & Pause Control -->
+                <div class="stage-footer">
+                  <div class="feedback-bar-row">
+                    <div id="feedback-drawer" class="feedback-drawer" aria-hidden="true">
+                      <div id="feedback-bar" class="feedback-bar"></div>
+                      <span class="feedback-drawer-label">Progress bar</span>
+                    </div>
+                    <button id="pause-progress-btn" class="pause-progress-btn hidden" type="button">
+                      Pause
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Incorrect Screen (shown after 2 failed attempts; allows one Try Again round) -->
+            <div id="incorrect-screen-panel" class="incorrect-screen-panel hidden" role="region" aria-live="polite"
+              aria-label="Incorrect Answer Review">
+              <div class="incorrect-screen-card">
+                <span id="incorrect-screen-badge" class="incorrect-screen-badge">Incorrect · 2 of 2 Attempts</span>
+                <div id="incorrect-screen-prompt" class="incorrect-screen-prompt">good afternoon</div>
+                <div class="incorrect-screen-answer-box">
+                  <span class="incorrect-screen-answer-label">Correct Spanish</span>
+                  <div id="incorrect-screen-answer" class="incorrect-screen-answer">Buenas tardes</div>
+                  <span id="incorrect-screen-word-hint" class="incorrect-screen-word-hint">Click any word above to hear
+                    it</span>
+                </div>
+                <div id="incorrect-screen-detail" class="incorrect-screen-detail"></div>
+                <div id="incorrect-screen-memory-tip" class="memory-tip-card memory-tip-card--incorrect hidden"
+                  role="note"></div>
+                <div id="incorrect-screen-phonemes" class="pronunciation-phoneme-strip hidden"
+                  aria-label="Last attempt phoneme breakdown"></div>
+                <div class="incorrect-screen-actions">
+                  <button id="incorrect-screen-play-spanish-btn" class="settings-test-btn" type="button"
+                    title="Hear the correct Spanish pronunciation">Hear Spanish</button>
+                  <button id="incorrect-screen-play-slow-btn" class="settings-test-btn" type="button"
+                    title="Hear the correct Spanish slowly (0.75x)">Hear Slowly</button>
+                  <button id="incorrect-screen-play-words-btn" class="settings-test-btn" type="button"
+                    title="Hear each individual word slowly with a clear pause between words">Word by Word</button>
+                  <button id="incorrect-screen-play-mine-btn" class="settings-test-btn hidden" type="button"
+                    title="Listen to your last recorded attempt">Play Mine</button>
+                  <button id="incorrect-screen-retry-btn" class="modal-btn incorrect-screen-retry-btn" type="button"
+                    title="Get 2 more tries on this word (available once per question)">Try Again (2 more
+                    tries)</button>
+                  <button id="incorrect-screen-next-btn" class="modal-btn modal-btn-primary incorrect-screen-next-btn"
+                    type="button">Continue to Next Question →</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Locked Subject Gate -->
+          <div id="category-placeholder-card" class="category-placeholder-card hidden">
+            <div class="placeholder-header">
+              <span id="placeholder-tag" class="placeholder-tag">Locked Subject</span>
+              <h2 id="placeholder-cat-title" class="placeholder-title">Greetings</h2>
+              <p id="placeholder-cat-desc" class="placeholder-desc"></p>
+            </div>
+            <div id="placeholder-stages-preview" class="placeholder-stages-preview"></div>
+            <div class="placeholder-actions">
+              <button id="placeholder-view-path-btn" class="modal-btn" type="button">View Full Path</button>
+              <button id="placeholder-return-btn" class="modal-btn modal-btn-primary" type="button">
+                Go to Current Subject
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <!-- View 2: Guided Progression Path -->
+    <section id="view-path" class="view-pane path-section hidden" aria-label="Learning Path">
+      <div id="path-panel" class="path-panel">
+        <div class="path-header-bar">
+          <div class="path-header-top">
+            <div class="path-header-info">
+              <span id="path-category-title" class="panel-header-title">CEFR A1 Certification Timeline</span>
+              <span id="path-category-subtitle" class="path-category-subtitle"></span>
+            </div>
+          </div>
+        </div>
+
+        <div id="path-body" class="path-body"></div>
+      </div>
+    </section>
+
+    <!-- View 3: Stats Calendar & Item Mastery Table -->
+    <section id="view-stats" class="view-pane stats-section hidden" aria-label="Calendar and Stats">
+      <div id="stats-panel" class="stats-panel">
+        <div class="stats-header-bar">
+          <div class="stats-header-top">
+            <div class="stage-seg stats-period-seg" role="group" aria-label="View Period">
+              <button id="stats-period-all" class="stage-seg-btn hidden" type="button" aria-pressed="false">All
+                Time</button>
+              <button id="stats-period-month" class="stage-seg-btn active" type="button"
+                aria-pressed="true">Month</button>
+              <button id="stats-period-week" class="stage-seg-btn" type="button" aria-pressed="false">Week</button>
+            </div>
+            <div class="stats-header-actions">
+              <div class="stage-seg stats-subview-seg" role="group" aria-label="Stats View Mode">
+                <button id="stats-tab-calendar" class="stage-seg-btn active" type="button"
+                  aria-pressed="true">Calendar</button>
+                <button id="stats-tab-trends" class="stage-seg-btn" type="button" aria-pressed="false">Trends</button>
+                <button id="stats-tab-table" class="stage-seg-btn" type="button" aria-pressed="false">Mastery
+                  Table</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats Sub-View 1: Study Calendar & Daily Reflection (Default) -->
+        <div id="stats-calendar-view" class="stats-calendar-view">
+          <div class="stats-cal-top-region">
+            <div class="stats-cal-toolbar">
+              <div class="stats-cal-nav">
+                <button id="cal-prev-month-btn" class="stats-cal-nav-btn" type="button"
+                  aria-label="Previous period">‹</button>
+                <button id="cal-month-label" class="stats-cal-month-btn" type="button" aria-expanded="false"
+                  title="Click to select month, week, or jump to a date">November 2026 ▾</button>
+                <button id="cal-next-month-btn" class="stats-cal-nav-btn" type="button"
+                  aria-label="Next period">›</button>
+              </div>
+            </div>
+
+            <div id="stats-cal-picker" class="stats-cal-picker hidden" role="dialog"
+              aria-label="Select Month, Week, or Date"></div>
+
+            <div class="stats-cal-grid-wrap">
+              <div class="stats-cal-weekdays" aria-hidden="true">
+                <span>Mon</span>
+                <span>Tue</span>
+                <span>Wed</span>
+                <span>Thu</span>
+                <span>Fri</span>
+                <span>Sat</span>
+                <span>Sun</span>
+              </div>
+              <div id="stats-cal-grid" class="stats-cal-grid" role="grid" aria-label="Study Calendar"></div>
+            </div>
+          </div>
+
+          <div id="stats-cal-detail" class="stats-cal-detail" aria-live="polite"></div>
+        </div>
+
+        <!-- Stats Sub-View 2: Trends (Pronunciation, New Words, Time Spent) & Sounds -->
+        <div id="stats-trends-view" class="stats-trends-view hidden">
+          <div id="stats-analytics-widgets" class="stats-analytics-widgets"></div>
+        </div>
+
+        <!-- Stats Sub-View 3: Item Mastery Table -->
+        <div id="stats-table-view" class="stats-table-view hidden">
+          <div class="stats-table-subbar">
+            <div id="stats-subject-filter" class="stats-subject-filter" role="group"
+              aria-label="Filter Stats by Subject"></div>
+            <div class="stats-insight-row">
+              <p id="stats-insight" class="stats-insight hidden"></p>
+              <div style="display:inline-flex;gap:0.4rem;flex-wrap:wrap;">
+                <button id="drill-polish-pron-btn" class="modal-btn modal-btn-sm hidden" type="button"
+                  title="Practice words that passed (81–89%) whose pronunciation could be improved">Polish
+                  Pronunciation</button>
+                <button id="drill-weak-words-btn" class="modal-btn modal-btn-sm hidden" type="button"
+                  title="Practice only your weakest words in Play view">Drill Weak Words</button>
+              </div>
+            </div>
+            <div id="stats-pronunciation-summary" class="stats-pronunciation-summary hidden" aria-live="polite"></div>
+            <div id="stats-table-scope-seg" class="stats-table-scope-seg" role="group"
+              aria-label="Filter Stats Tables">
+              <button id="stats-scope-both" class="stats-scope-btn active" type="button" aria-pressed="true">Both
+                Tables</button>
+              <button id="stats-scope-base" class="stats-scope-btn" type="button" aria-pressed="false">Base
+                Questions</button>
+              <button id="stats-scope-extensions" class="stats-scope-btn" type="button"
+                aria-pressed="false">Extensions</button>
+            </div>
+          </div>
+
+          <div id="stats-dual-tables-scroll" class="stats-dual-tables-scroll">
+            <div id="stats-base-section" class="stats-dual-section">
+              <div class="stats-dual-header">
+                <div class="stats-dual-header-text">
+                  <h3 class="stats-dual-title">Base Questions &amp; Numbers</h3>
+                  <span class="stats-dual-sub">Pass/fail &amp; stage progression are rated strictly on the Base</span>
+                </div>
+                <span id="stats-base-count-badge" class="stats-table-count-badge">0 practiced</span>
+              </div>
+
+              <div id="stats-empty-state" class="stats-empty-state hidden">
+                <p class="stats-empty-title">No recorded answers yet.</p>
+              </div>
+
+              <div id="stats-table-wrap" class="stats-table-wrap">
+                <table id="stats-table" class="stats-table">
+                  <thead>
+                    <tr>
+                      <th>
+                        <button type="button" class="sort-header-btn active" data-sort="number"><span
+                            id="stats-col-item-label">Word / Number</span>
+                        </button>
+                      </th>
+                      <th><span id="stats-col-meaning-label">Translation</span></th>
+                      <th class="num-col">
+                        <button type="button" class="sort-header-btn" data-sort="correct">Correct</button>
+                      </th>
+                      <th class="num-col">
+                        <button type="button" class="sort-header-btn" data-sort="incorrect">Incorrect</button>
+                      </th>
+                      <th class="num-col">
+                        <button type="button" class="sort-header-btn" data-sort="pct">Accuracy</button>
+                      </th>
+                      <th class="num-col">
+                        <button type="button" class="sort-header-btn" data-sort="pronunciation">Pronunciation</button>
+                      </th>
+                      <th class="num-col trophy-col">
+                        <button type="button" class="sort-header-btn" data-sort="trophy">Trophy</button>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody id="stats-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div id="stats-extensions-section" class="stats-dual-section">
+              <div class="stats-dual-header">
+                <div class="stats-dual-header-text">
+                  <h3 class="stats-dual-title">Extensions &amp; Fill Words</h3>
+                  <span class="stats-dual-sub">Tracked separately from Base question ratings across all units</span>
+                </div>
+                <span id="stats-extensions-count-badge" class="stats-table-count-badge">0 tracked</span>
+              </div>
+
+              <div id="stats-extensions-empty-state" class="stats-empty-state hidden">
+                <p class="stats-empty-title">No extension answers recorded yet for this topic.</p>
+              </div>
+
+              <div id="stats-extensions-table-wrap" class="stats-table-wrap">
+                <table id="stats-extensions-table" class="stats-table">
+                  <thead>
+                    <tr>
+                      <th>
+                        <button type="button" class="sort-header-btn ext-sort-header-btn active"
+                          data-ext-sort="name">Extension</button>
+                      </th>
+                      <th><span>Meaning</span></th>
+                      <th class="num-col">
+                        <button type="button" class="sort-header-btn ext-sort-header-btn"
+                          data-ext-sort="correct">Correct</button>
+                      </th>
+                      <th class="num-col">
+                        <button type="button" class="sort-header-btn ext-sort-header-btn"
+                          data-ext-sort="incorrect">Incorrect</button>
+                      </th>
+                      <th class="num-col">
+                        <button type="button" class="sort-header-btn ext-sort-header-btn"
+                          data-ext-sort="pct">Accuracy</button>
+                      </th>
+                      <th class="num-col">
+                        <button type="button" class="sort-header-btn ext-sort-header-btn"
+                          data-ext-sort="pronunciation">Pronunciation</button>
+                      </th>
+                      <th class="num-col trophy-col">
+                        <button type="button" class="sort-header-btn ext-sort-header-btn"
+                          data-ext-sort="trophy">Trophy</button>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody id="stats-extensions-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Joyful Journey Stamp Notification -->
+    <div id="achievement-toast" class="achievement-toast hidden" role="status" aria-live="polite">
+      <div id="achievement-toast-icon" class="achievement-toast-icon" aria-hidden="true">🔥</div>
+      <div class="achievement-toast-body">
+        <span class="achievement-toast-kicker">Passport Stamp Earned!</span>
+        <strong id="achievement-toast-title" class="achievement-toast-title">Flame Keeper · Stamp 1/5</strong>
+        <span id="achievement-toast-desc" class="achievement-toast-desc">You lit up your daily Spanish rhythm!</span>
+      </div>
+    </div>
+
+    <!-- Confirmation Prompt Modal for Row Data Deletion -->
+    <div id="delete-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+      aria-labelledby="delete-modal-title">
+      <div class="modal-card">
+        <h2 id="delete-modal-title" class="modal-title">Clear History</h2>
+        <p id="delete-modal-desc" class="modal-desc">
+          Remove recorded attempts for this item?
+        </p>
+        <div class="modal-actions">
+          <button id="modal-cancel-btn" class="modal-btn" type="button">Cancel</button>
+          <button id="modal-confirm-btn" class="modal-btn modal-btn-danger" type="button">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirmation Prompt Modal for Moving Data to Previous Date -->
+    <div id="move-date-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+      aria-labelledby="move-date-modal-title">
+      <div class="modal-card">
+        <h2 id="move-date-modal-title" class="modal-title">Move Data to Previous Date</h2>
+        <p id="move-date-modal-desc" class="modal-desc">
+          Are you sure you want to move all existing answered question data to yesterday?
+        </p>
+        <div class="modal-actions">
+          <button id="move-date-cancel-btn" class="modal-btn" type="button">Cancel</button>
+          <button id="move-date-confirm-btn" class="modal-btn modal-btn-danger" type="button">Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Data Management Modal -->
+    <div id="data-mgmt-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+      aria-labelledby="data-mgmt-modal-title">
+      <div class="modal-card modal-card--wide">
+        <h2 id="data-mgmt-modal-title" class="modal-title">Backups &amp; Data</h2>
+        <div class="data-mgmt-list">
+          <div class="data-mgmt-row">
+            <div class="data-mgmt-info">
+              <span class="data-mgmt-title">Move Data to Yesterday</span>
+            </div>
+            <button id="move-date-btn" class="modal-btn modal-btn-sm" type="button">Move</button>
+          </div>
+
+          <div class="data-mgmt-row">
+            <div class="data-mgmt-info">
+              <span class="data-mgmt-title">Export Backup</span>
+            </div>
+            <button id="export-data-btn" class="modal-btn modal-btn-sm" type="button">Export</button>
+          </div>
+
+          <div class="data-mgmt-row">
+            <div class="data-mgmt-info">
+              <span class="data-mgmt-title">Restore Backup</span>
+              <span class="data-mgmt-sub">Supports Speech-Only or Normal-Mode JSON exports (imports
+                speakOnlyProfile)</span>
+            </div>
+            <button id="import-data-btn" class="modal-btn modal-btn-sm" type="button">Import</button>
+            <input id="import-data-input" type="file" accept=".json,application/json" class="hidden" />
+          </div>
+
+          <div class="data-mgmt-row">
+            <div class="data-mgmt-info">
+              <span class="data-mgmt-title">Rolling Auto-Snapshot</span>
+              <span class="data-mgmt-sub">Restore one of the last 7 daily automatic local snapshots</span>
+            </div>
+            <div class="data-mgmt-controls">
+              <select id="snapshot-select" class="setting-select data-mgmt-select" aria-label="Select daily snapshot">
+                <option value="">No snapshots yet</option>
+              </select>
+              <button id="restore-snapshot-btn" class="modal-btn modal-btn-sm" type="button" disabled>Restore</button>
+            </div>
+          </div>
+
+          <div class="data-mgmt-row">
+            <div class="data-mgmt-info">
+              <span class="data-mgmt-title">Generate Sample Progress</span>
+            </div>
+            <button id="randomize-data-btn" class="modal-btn modal-btn-sm" type="button">Generate</button>
+          </div>
+
+          <div class="data-mgmt-row">
+            <div class="data-mgmt-info">
+              <span class="data-mgmt-title">Delete Topic Data</span>
+              <span class="data-mgmt-sub">Clear stats, SRS &amp; stages for a single topic</span>
+            </div>
+            <div class="data-mgmt-controls">
+              <select id="wipe-topic-select" class="setting-select data-mgmt-select"
+                aria-label="Select topic to delete">
+                <option value="greetings">A1.1 Greetings</option>
+                <option value="identity">A1.2 Identity &amp; Ser</option>
+                <option value="numbers">A1.3 Numbers &amp; Time</option>
+                <option value="family">A1.4 Family &amp; Estar</option>
+                <option value="verbs">A1.5 Verbs &amp; Routine</option>
+                <option value="food">A1.6 Food &amp; Shopping</option>
+                <option value="transit">A1.7 City &amp; Transit</option>
+                <option value="a1_life">A1.8 Weather, Health &amp; Plans</option>
+              </select>
+              <button id="wipe-topic-btn" class="modal-btn modal-btn-sm modal-btn-danger" type="button">Delete</button>
+            </div>
+          </div>
+
+          <div class="data-mgmt-row">
+            <div class="data-mgmt-info">
+              <span class="data-mgmt-title">Reset All Progress</span>
+            </div>
+            <button id="wipe-data-btn" class="modal-btn modal-btn-sm modal-btn-danger" type="button">Wipe</button>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="data-mgmt-close-btn" class="modal-btn" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wipe Topic Confirmation Modal -->
+    <div id="wipe-topic-confirm-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+      aria-labelledby="wipe-topic-confirm-modal-title">
+      <div class="modal-card">
+        <h2 id="wipe-topic-confirm-modal-title" class="modal-title">Delete Topic Data</h2>
+        <p id="wipe-topic-confirm-modal-desc" class="modal-desc">
+          Permanently clear all word stats, SRS scheduling, mastery streaks, and stage progress for this topic?
+        </p>
+        <div class="modal-actions">
+          <button id="wipe-topic-cancel-btn" class="modal-btn" type="button">Cancel</button>
+          <button id="wipe-topic-confirm-btn" class="modal-btn modal-btn-danger" type="button">Delete Topic</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wipe Data Confirmation Modal -->
+    <div id="wipe-confirm-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+      aria-labelledby="wipe-confirm-modal-title">
+      <div class="modal-card">
+        <h2 id="wipe-confirm-modal-title" class="modal-title">Reset All Progress</h2>
+        <p class="modal-desc">
+          Permanently clear all stats, study time, achievements, and stage progress?
+        </p>
+        <div class="modal-actions">
+          <button id="wipe-cancel-btn" class="modal-btn" type="button">Cancel</button>
+          <button id="wipe-confirm-btn" class="modal-btn modal-btn-danger" type="button">Reset All</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Muted Audio Volume Prompt Modal -->
+    <div id="muted-audio-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+      aria-labelledby="muted-audio-modal-title">
+      <div class="modal-card">
+        <h2 id="muted-audio-modal-title" class="modal-title">Voice Volume Muted</h2>
+        <p class="modal-desc">
+          Voice Volume is at 0%. Unmute to hear pronunciation?
+        </p>
+        <div class="modal-actions">
+          <button id="muted-audio-dismiss-btn" class="modal-btn" type="button">Keep Muted</button>
+          <button id="muted-audio-unmute-btn" class="modal-btn modal-btn-primary" type="button">Unmute (100%)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Topic Educate / Rules Guide Modal -->
+    <div id="topic-educate-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+      aria-labelledby="topic-educate-title">
+      <div class="modal-card modal-card--educate">
+        <div class="modal-header-row">
+          <div class="topic-educate-heading">
+            <span id="topic-educate-tag" class="placeholder-tag">A1.1 Rules</span>
+            <h2 id="topic-educate-title" class="modal-title">A1.1 Greetings · Rules &amp; Patterns</h2>
+          </div>
+          <button id="topic-educate-close-x" class="cat-dd-close-btn modal-close-top-right" type="button"
+            aria-label="Close topic rules guide">✕</button>
+        </div>
+        <p id="topic-educate-subtitle" class="modal-desc"></p>
+        <div id="topic-educate-body" class="topic-educate-body"></div>
+      </div>
+    </div>
+
+    <!-- Subject Completed Celebration Modal -->
+    <div id="subject-complete-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+      aria-labelledby="subject-complete-title">
+      <div class="modal-card">
+        <span class="placeholder-tag" id="subject-complete-tag">Subject Complete</span>
+        <h2 id="subject-complete-title" class="modal-title">A1.1 Greetings Complete</h2>
+        <p id="subject-complete-desc" class="modal-desc"></p>
+        <div class="modal-actions">
+          <button id="subject-complete-stay-btn" class="modal-btn" type="button">Keep Practicing</button>
+          <button id="subject-complete-next-btn" class="modal-btn modal-btn-primary" type="button">Start
+            A1.2 Identity &amp; Ser →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Word Introduction Modal -->
+  <div id="word-intro-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+    aria-labelledby="word-intro-es">
+    <div id="word-intro-glow-wrap" class="word-intro-glow-wrap">
+      <div class="modal-card modal-card--educate word-intro-card">
+        <div class="word-intro-hero">
+          <div class="word-intro-hero-top">
+            <span id="word-intro-tag" class="placeholder-tag">New Phrase</span>
+            <span id="word-intro-pattern" class="word-intro-pattern-pill hidden"></span>
+          </div>
+          <h2 id="word-intro-es" class="word-intro-es-phrase">hola</h2>
+          <p id="word-intro-en" class="word-intro-en">hello / hi</p>
+          <div id="word-intro-slot-bar" class="slot-options-bar slot-options-bar--modal hidden">
+            <label id="word-intro-slot-label" class="slot-options-label" for="word-intro-slot-select">15 common Spanish
+              answers:</label>
+            <select id="word-intro-slot-select" class="slot-options-select"
+              aria-label="Choose from 15 common Spanish answers"></select>
+          </div>
+          <div class="word-intro-audio-row">
+            <button id="word-intro-hear-btn" class="speak-compare-btn" type="button" title="Listen to full phrase">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+              </svg>
+              <span>Listen</span>
+            </button>
+            <button id="word-intro-hear-slow-btn" class="speak-compare-btn word-intro-slow-btn" type="button"
+              title="Listen slowly (0.75×)">
+              <span>Slow (0.75×)</span>
+            </button>
+            <span class="word-intro-click-hint">Click any Spanish word above to hear it</span>
+          </div>
+        </div>
+        <div id="word-intro-body" class="word-intro-inline-grid">
+          <div class="word-intro-info-card">
+            <div class="topic-educate-section-title">How to Pronounce</div>
+            <div id="word-intro-pronunciation" class="word-intro-pron-body"></div>
+          </div>
+          <div class="word-intro-info-card">
+            <div class="topic-educate-section-title">Funny Memory Tip</div>
+            <p id="word-intro-tip" class="word-intro-text"></p>
+          </div>
+        </div>
+        <div class="modal-actions word-intro-actions">
+          <button id="word-intro-skip-stage-btn" class="modal-btn" type="button"
+            title="Turn off new-word introductions for this stage">Skip Stage Intros</button>
+          <button id="word-intro-continue-btn" class="modal-btn modal-btn-primary" type="button">Start Question
+            →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Topic Exam Failed Modal -->
+  <div id="topic-exam-failed-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+    aria-labelledby="topic-exam-failed-title">
+    <div class="modal-card modal-card--educate topic-exam-failed-card">
+      <div class="stage-award-hero">
+        <span class="placeholder-tag topic-exam-fail-tag">Final Exam · 90% Required</span>
+        <h2 id="topic-exam-failed-title" class="modal-title">Topic Exam Not Passed</h2>
+        <p id="topic-exam-failed-desc" class="modal-desc"></p>
+      </div>
+      <div id="topic-exam-failed-stats" class="stage-award-stats-grid"></div>
+      <div class="modal-actions">
+        <button id="topic-exam-retake-btn" class="modal-btn modal-btn-primary" type="button">Retake Exam (0/30) →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stage Complete Award Modal -->
+  <div id="stage-complete-award-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+    aria-labelledby="stage-award-title">
+    <div class="modal-card modal-card--educate stage-award-card">
+      <div class="stage-award-hero">
+        <div class="stage-award-trophy" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" fill="none" />
+            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" fill="none" />
+            <path d="M4 22h16" fill="none" />
+            <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" fill="none" />
+            <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" fill="none" />
+            <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+          </svg>
+        </div>
+        <span class="placeholder-tag">Stage Complete</span>
+        <h2 id="stage-award-title" class="modal-title">Stage Complete!</h2>
+        <p id="stage-award-subtitle" class="modal-desc"></p>
+      </div>
+      <div id="stage-award-stats" class="stage-award-stats-grid"></div>
+      <div id="stage-award-skills" class="stage-award-skills"></div>
+      <div class="modal-actions">
+        <button id="stage-award-continue-btn" class="modal-btn modal-btn-primary" type="button">See New Words →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Next Stage New Words & Phrases Preview Modal -->
+  <div id="next-stage-preview-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+    aria-labelledby="next-stage-preview-title">
+    <div class="modal-card modal-card--educate">
+      <div class="modal-header-row">
+        <div class="topic-educate-heading">
+          <span class="placeholder-tag">Unlocked Next Stage</span>
+          <h2 id="next-stage-preview-title" class="modal-title">New Words &amp; Phrases</h2>
+        </div>
+      </div>
+      <p id="next-stage-preview-subtitle" class="modal-desc"></p>
+      <div id="next-stage-preview-body" class="stage-seen-modal-body"></div>
+      <div class="modal-actions">
+        <button id="next-stage-preview-start-btn" class="modal-btn modal-btn-primary" type="button">Start Stage
+          →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stage Seen Words Modal -->
+  <div id="stage-seen-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+    aria-labelledby="stage-seen-modal-title">
+    <div class="modal-card modal-card--educate">
+      <div class="modal-header-row">
+        <div class="topic-educate-heading">
+          <h2 id="stage-seen-modal-title" class="modal-title">Stage Words Seen</h2>
+        </div>
+        <button id="stage-seen-close-x" class="cat-dd-close-btn modal-close-top-right" type="button"
+          aria-label="Close stage seen words">✕</button>
+      </div>
+      <p id="stage-seen-modal-subtitle" class="modal-desc"></p>
+      <div id="stage-seen-modal-body" class="stage-seen-modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Re-introduce Completed Skill Confirmation Modal -->
+  <div id="reintroduce-skill-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+    aria-labelledby="reintroduce-skill-modal-title">
+    <div class="modal-card">
+      <h2 id="reintroduce-skill-modal-title" class="modal-title">Re-introduce Skill</h2>
+      <p id="reintroduce-skill-modal-desc" class="modal-desc">
+        Reset this completed skill for the current stage so you can practice it again? This will delay stage
+        progression.
+      </p>
+      <div class="modal-actions">
+        <button id="reintroduce-skill-cancel-btn" class="modal-btn" type="button">Cancel</button>
+        <button id="reintroduce-skill-confirm-btn" class="modal-btn modal-btn-primary" type="button">Unlock
+          Skill</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Skip Entire Stage Confirmation Modal -->
+  <div id="skip-stage-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+    aria-labelledby="skip-stage-modal-title">
+    <div class="modal-card">
+      <h2 id="skip-stage-modal-title" class="modal-title">Skip Entire Stage?</h2>
+      <p id="skip-stage-modal-desc" class="modal-desc"></p>
+      <div class="modal-actions">
+        <button id="skip-stage-cancel-btn" class="modal-btn" type="button">Cancel</button>
+        <button id="skip-stage-confirm-btn" class="modal-btn modal-btn-primary" type="button">Skip Stage →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unsupported Browser Warning Modal -->
+  <div id="browser-warning-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+    aria-labelledby="browser-warning-modal-title">
+    <div class="modal-card browser-warning-card">
+      <h2 id="browser-warning-modal-title" class="modal-title">Unsupported Browser</h2>
+      <p id="browser-warning-modal-desc" class="modal-desc">
+        Google Chrome should be used for this web app for full voice, speech recognition, and audio support.
+      </p>
+      <p id="browser-warning-open-status" class="browser-warning-status hidden"></p>
+      <div class="modal-actions">
+        <button id="browser-warning-continue-btn" class="modal-btn" type="button">Continue Anyway</button>
+        <button id="browser-warning-open-chrome-btn" class="modal-btn modal-btn-primary" type="button">Open in Google
+          Chrome</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Speech System Error Modal -->
+  <div id="speech-error-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+    aria-labelledby="speech-error-modal-title">
+    <div class="modal-card browser-warning-card">
+      <h2 id="speech-error-modal-title" class="modal-title">Speech System Error</h2>
+      <p id="speech-error-modal-desc" class="modal-desc">
+        The speech system encountered an error.
+      </p>
+      <p id="speech-error-modal-detail" class="browser-warning-status hidden"></p>
+      <div class="modal-actions">
+        <button id="speech-error-dismiss-btn" class="modal-btn" type="button">Dismiss</button>
+        <button id="speech-error-console-btn" class="modal-btn" type="button">Open Console</button>
+        <button id="speech-error-retry-btn" class="modal-btn modal-btn-primary" type="button">Retry Connection</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Testing & QA Diagnostics Suite Modal -->
+  <div id="testing-suite-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+    aria-labelledby="testing-suite-title">
+    <div class="modal-card modal-card--educate testing-suite-card">
+      <div class="modal-header-row">
+        <div class="topic-educate-heading">
+          <span class="placeholder-tag">Testing &amp; QA Lab</span>
+          <h2 id="testing-suite-title" class="modal-title">In-App Diagnostics &amp; Expected Checks</h2>
+        </div>
+        <button id="testing-suite-close-x" class="cat-dd-close-btn modal-close-top-right" type="button"
+          aria-label="Close Testing Suite">✕</button>
+      </div>
+
+      <div class="testing-suite-scroll">
+        <div class="testing-suite-section">
+          <div class="testing-suite-section-head">
+            <span class="testing-suite-section-title">1. Automated Self-Tests (Expected vs Actual)</span>
+            <div class="testing-suite-section-actions">
+              <span id="testing-diagnostics-summary" class="testing-summary-pill">Ready</span>
+              <button id="testing-run-all-btn" class="settings-test-btn" type="button">Run All Checks</button>
+              <button id="testing-copy-report-btn" class="settings-test-btn" type="button">Copy Report</button>
+            </div>
+          </div>
+          <div id="testing-diagnostics-results" class="testing-diagnostics-results"></div>
+        </div>
+
+        <div class="testing-suite-section">
+          <div class="testing-suite-section-head">
+            <span class="testing-suite-section-title">2. Current Prompt Expected Inspector</span>
+          </div>
+          <div id="testing-inspector-body" class="testing-inspector-body"></div>
+        </div>
+
+        <div class="testing-suite-section">
+          <div class="testing-suite-section-head">
+            <span class="testing-suite-section-title">3. UI Modal, Audio &amp; Command Triggers (Hover for Expected)</span>
+          </div>
+          <div class="testing-triggers-grid">
+            <button id="qa-trigger-award-modal-btn" class="settings-test-btn" type="button"
+              title="Expected: opens Stage Complete Award modal with accuracy & skill chips">Stage Award Modal</button>
+            <button id="qa-trigger-exam-brief-btn" class="settings-test-btn" type="button"
+              title="Expected: opens Hard Topic Exam briefing (30 Qs, 90%, 1 try, no hints)">Exam Briefing Modal</button>
+            <button id="qa-trigger-exam-fail-modal-btn" class="settings-test-btn" type="button"
+              title="Expected: opens Topic Exam Not Passed modal (26/30 · 87%) with Retake button">Exam Failed Modal</button>
+            <button id="qa-trigger-unit-complete-btn" class="settings-test-btn" type="button"
+              title="Expected: opens Unit Complete modal with next unit unlock button">Unit Complete Modal</button>
+            <button id="qa-trigger-memory-tip-btn" class="settings-test-btn" type="button"
+              title="Expected: sets 3+ misses on current item and shows Memory Tip (suppressed in Exam)">Trigger Memory Tip (3×)</button>
+            <button id="qa-trigger-daily-30m-btn" class="settings-test-btn" type="button"
+              title="Expected: sets today's active study timer to 30m and marks daily goal complete">Fill 30m Daily Goal</button>
+            <button id="qa-trigger-sfx-correct-btn" class="settings-test-btn" type="button"
+              title="Expected: plays selected Correct Answer chime">SFX: Correct</button>
+            <button id="qa-trigger-sfx-wrong-btn" class="settings-test-btn" type="button"
+              title="Expected: plays selected Try-Again sound">SFX: Incorrect</button>
+            <button id="qa-trigger-sfx-earcon-btn" class="settings-test-btn" type="button"
+              title="Expected: plays Hands-Free listening-ready earcon chime">SFX: HF Earcon</button>
+            <button id="qa-trigger-sfx-pause-btn" class="settings-test-btn" type="button"
+              title="Expected: plays Hands-Free paused chime">SFX: HF Paused</button>
+            <button class="settings-test-btn" type="button" data-qa-voice-cmd="repeat"
+              title="Expected: replays Spanish in Practice or blocks leak before Attempt 1 in Graded">Cmd: "repeat"</button>
+            <button class="settings-test-btn" type="button" data-qa-voice-cmd="skip"
+              title="Expected: skips current prompt, speaks Spanish, advances">Cmd: "skip"</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="testing-suite-close-btn" class="modal-btn modal-btn-primary" type="button">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- End-of-Session Summary Modal -->
+  <div id="session-summary-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+    aria-labelledby="session-summary-title">
+    <div class="modal-card modal-card--educate">
+      <div class="modal-header-row">
+        <div class="topic-educate-heading">
+          <span class="placeholder-tag">Session Summary</span>
+          <h2 id="session-summary-title" class="modal-title">Your Speaking Session</h2>
+        </div>
+        <button id="session-summary-close-x" class="cat-dd-close-btn modal-close-top-right" type="button"
+          aria-label="Close session summary">✕</button>
+      </div>
+      <div id="session-summary-body" class="session-summary-body"></div>
+      <div class="modal-actions">
+        <button id="session-summary-close-btn" class="modal-btn modal-btn-primary" type="button">Keep
+          Practicing</button>
+      </div>
+    </div>
+  </div>
+
+  <section id="speech-console-panel" class="speech-console-panel hidden" aria-label="Speech System Console">
+    <div class="speech-console-header">
+      <div class="speech-console-title-wrap">
+        <span class="speech-console-title">Speech System Console</span>
+        <span id="speech-console-state-pill" class="speech-console-state-pill">Checking…</span>
+      </div>
+      <div class="speech-console-actions">
+        <button id="speech-console-health-btn" class="speech-console-action-btn" type="button"
+          title="Ping /health on local-scorer and log full response">Health</button>
+        <button id="speech-console-copy-btn" class="speech-console-action-btn" type="button"
+          title="Copy full verbose console log to clipboard">Copy</button>
+        <button id="speech-console-clear-btn" class="speech-console-action-btn" type="button"
+          title="Clear log entries">Clear</button>
+        <button id="speech-console-close-btn" class="speech-console-close-btn" type="button"
+          aria-label="Close Speech System Console" title="Close console">&times;</button>
+      </div>
+    </div>
+
+    <div id="speech-console-stats" class="speech-console-stats"></div>
+
+    <div class="speech-console-toolbar">
+      <span id="speech-console-log-meta" class="speech-console-log-meta">0 events</span>
+      <label class="speech-console-autoscroll-label">
+        <input id="speech-console-autoscroll" type="checkbox" checked />
+        <span>Auto-scroll</span>
+      </label>
+    </div>
+
+    <div id="speech-console-logs" class="speech-console-logs" role="log" aria-live="off"></div>
+  </section>
+
+  <div class="bottom-right-controls">
+    <footer id="daily-goal-footer" class="daily-goal-footer daily-goal-footer--dock" data-tier="0"
+      aria-label="Daily Study Progress">
+      <div class="daily-goal-meta">
+        <div class="daily-goal-left">
+          <span class="daily-goal-label">Daily Goal</span>
+          <span id="daily-goal-milestone" class="daily-goal-milestone"></span>
+        </div>
+        <span id="daily-goal-count" class="daily-goal-count">0 / 75 correct · 0 / 150 total</span>
+      </div>
+      <div id="daily-goal-track" class="daily-goal-track">
+        <div id="daily-goal-fill" class="daily-goal-fill" style="width: 0%"></div>
+      </div>
+      <div class="daily-goal-time-row">
+        <span class="daily-goal-time-label">Time Spent</span>
+        <span id="daily-goal-time-count" class="daily-goal-time-count">0m 00s / 30m</span>
+      </div>
+      <div id="daily-goal-time-track" class="daily-goal-track daily-goal-time-track">
+        <div id="daily-goal-time-fill" class="daily-goal-fill daily-goal-time-fill" style="width: 0%"></div>
+      </div>
+    </footer>
+
+    <button id="speech-console-toggle-btn" class="speak-only-toggle-btn speech-console-toggle-btn" type="button"
+      aria-expanded="false" aria-controls="speech-console-panel" title="Open or close verbose Speech System Console">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="4 17 10 11 4 5" />
+        <line x1="12" y1="19" x2="20" y2="19" />
+      </svg>
+      <span>Console</span>
+      <span id="speech-console-count" class="speech-console-count">0</span>
+    </button>
+  </div>
+
+  <script type="module" src="app.js?v=2"></script>
+</body>
+
+</html>
