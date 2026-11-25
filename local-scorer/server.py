@@ -710,60 +710,153 @@ async def score_pronunciation(
     base_matched = panama_match
     base_matched_cand = matched_cand
     ext_matched = False
+    extension_included = False
+    base_rescored_only = False
     base_score_val = None
     ext_score_val = None
     ext_passed_val = None
+
+    def _strip_base_from_transcript(transcript: str, base_cand: str) -> str:
+        t_words = normalize_panamanian_phonetics(transcript).split()
+        b_words = normalize_panamanian_phonetics(base_cand).split()
+        if not t_words:
+            return ""
+        rem = list(t_words)
+        # Remove matched base words (in order)
+        for bw in b_words:
+            for idx, tw in enumerate(rem):
+                if tw == bw or (len(bw) >= 3 and phonetic_similarity(tw, bw) >= 0.82):
+                    rem.pop(idx)
+                    break
+        # Ignore optional leading subject pronouns so "yo quiero" isn't mistaken for an extension attempt
+        optional_pronouns = {"yo", "tu", "el", "ella", "usted", "nosotros", "nosotras", "ellos", "ellas", "ustedes"}
+        while rem and rem[0] in optional_pronouns:
+            rem.pop(0)
+        return " ".join(rem).strip()
+
+    def _compute_active_word_indices(target_text: str, base_cand: str) -> tuple[set[int], set[int]]:
+        if strip_punctuation(target_text) == strip_punctuation(expectedEs) and parsed_base_idx:
+            return parsed_base_idx, parsed_ext_idx
+        t_words = strip_punctuation(target_text).split()
+        b_words = strip_punctuation(base_cand).split()
+        if not t_words or not b_words:
+            return parsed_base_idx, parsed_ext_idx
+        t_phon = [normalize_panamanian_phonetics(w) for w in t_words]
+        b_phon = [normalize_panamanian_phonetics(w) for w in b_words]
+        used_base: set[int] = set()
+        cursor = 0
+        for bp in b_phon:
+            for idx in range(cursor, len(t_phon)):
+                if idx not in used_base and (t_phon[idx] == bp or phonetic_similarity(t_phon[idx], bp) >= 0.82):
+                    used_base.add(idx)
+                    cursor = idx + 1
+                    break
+        if not used_base:
+            return parsed_base_idx, parsed_ext_idx
+        ext_set = {i for i in range(len(t_words)) if i not in used_base}
+        return used_base, ext_set
 
     if base_only_rated:
         base_candidates = [clean_base_es] + [
             str(c).strip() for c in parsed_base_alts if isinstance(c, str) and str(c).strip()
         ]
-        if not base_matched:
+        # Verify base_matched explicitly (avoid passing if an altEs contained only an extension word)
+        explicit_base_hit = None
+        explicit_base_tr = None
+        for tr in (asr_heard, ctc_heard):
+            if not tr:
+                continue
+            hit_b = next((bc for bc in base_candidates if _phrase_contains_segment(tr, bc)), None)
+            if hit_b:
+                explicit_base_hit = hit_b
+                explicit_base_tr = tr
+                break
+
+        slot_matched = bool(
+            parsed_slot
+            and any(bool(tr) and match_slot_template(tr, parsed_slot)[0] for tr in (asr_heard, ctc_heard))
+        )
+        if slot_matched:
+            base_matched = True
+            base_matched_cand = explicit_base_hit or clean_base_es
+        elif explicit_base_hit:
+            base_matched = True
+            base_matched_cand = explicit_base_hit
+            if not panama_match:
+                heard = explicit_base_tr or heard
+                match_source = match_source or "base_only_match"
+        elif panama_match and matched_cand:
+            # Only count panama_match as base_matched if matched_cand actually contains a base candidate
+            has_base_in_cand = any(_phrase_contains_segment(matched_cand, bc) for bc in base_candidates)
+            base_matched = has_base_in_cand
+            if has_base_in_cand:
+                base_matched_cand = clean_base_es
+
+        is_any_slot_ext = clean_ext_es == "__slot_any__"
+        if is_any_slot_ext:
+            ext_matched = slot_matched
+        else:
+            ext_direct = any(
+                bool(tr) and _phrase_contains_segment(tr, clean_ext_es)
+                for tr in (asr_heard, ctc_heard)
+            )
+            # Also accept alternate valid slot/quantity extensions when full phrase or slot template matched
+            full_phrase_has_ext = bool(
+                panama_match
+                and matched_cand
+                and not any(is_same_word_panama(matched_cand, bc) for bc in base_candidates)
+                and len(_strip_base_from_transcript(matched_cand, base_matched_cand or clean_base_es)) >= 2
+            )
+            ext_matched = bool(ext_direct or slot_matched or full_phrase_has_ext)
+
+        extension_included = bool(ext_matched)
+        if not extension_included and base_matched and not is_any_slot_ext:
+            # Check whether the learner attempted the extension (with mispronunciation) vs omitted it
             for tr in (asr_heard, ctc_heard):
                 if not tr:
                     continue
-                hit_b = next((bc for bc in base_candidates if _phrase_contains_segment(tr, bc)), None)
-                if hit_b:
-                    base_matched = True
-                    base_matched_cand = hit_b
-                    heard = tr
-                    match_source = match_source or "base_only_match"
+                rem_str = _strip_base_from_transcript(tr, base_matched_cand or clean_base_es)
+                if len(rem_str) >= 2 and phonetic_similarity(rem_str, normalize_panamanian_phonetics(clean_ext_es)) >= 0.45:
+                    extension_included = True
                     break
-        ext_matched = any(
-            bool(tr) and _phrase_contains_segment(tr, clean_ext_es)
-            for tr in (asr_heard, ctc_heard)
-        )
 
-        # If the learner matched the base (e.g. said only base or missed extension) without matching full phrase,
-        # rescore GOP directly against the base target so missing extension never penalizes base score!
-        if base_matched and not panama_match and base_matched_cand:
+        # If the learner matched the base ONLY (did not include extension), rescore GOP directly against the base target
+        # so the omitted optional extension never penalizes the base score or weak-char list!
+        if base_matched and not extension_included and base_matched_cand:
             gop_res, extra_ms = await loop.run_in_executor(
                 executor, _timed_gop, wav, base_matched_cand, effective_min_score
             )
             alt_rescore_ms = round(alt_rescore_ms + extra_ms, 1)
             scored_target = base_matched_cand
+            base_rescored_only = True
             base_score_val = int(gop_res["score"])
-            ext_score_val = 0 if not ext_matched else int(gop_res["score"])
+            ext_score_val = None
         else:
+            active_base_idx, active_ext_idx = _compute_active_word_indices(
+                scored_target, base_matched_cand or clean_base_es
+            )
             char_details_all = gop_res.get("char_details") or []
             base_char_scores = [
                 int(c.get("score", 0))
                 for c in char_details_all
-                if c.get("wordIndex") in parsed_base_idx
+                if c.get("wordIndex") in active_base_idx
             ]
             ext_char_scores = [
                 int(c.get("score", 0))
                 for c in char_details_all
-                if c.get("wordIndex") in parsed_ext_idx
+                if c.get("wordIndex") in active_ext_idx
             ]
             if base_char_scores:
                 base_score_val = int(round(sum(base_char_scores) / len(base_char_scores)))
             else:
                 base_score_val = int(gop_res["score"])
-            if ext_char_scores:
-                ext_score_val = int(round(sum(ext_char_scores) / len(ext_char_scores)))
+            if extension_included:
+                if ext_char_scores:
+                    ext_score_val = int(round(sum(ext_char_scores) / len(ext_char_scores)))
+                else:
+                    ext_score_val = int(gop_res["score"]) if ext_matched else 0
             else:
-                ext_score_val = int(gop_res["score"]) if ext_matched else 0
+                ext_score_val = None
 
     expected_phon = normalize_panamanian_phonetics(scored_target)
     heard_phon = normalize_panamanian_phonetics(heard)
@@ -800,12 +893,18 @@ async def score_pronunciation(
     pass_threshold = effective_min_score if effective_min_score <= 80 else 81
     passed = bool(not wrong_word and score >= pass_threshold)
     if base_only_rated:
-        ext_passed_val = bool(ext_matched and (ext_score_val or 0) >= pass_threshold)
-        base_weak_chars = [
-            c.get("ch")
-            for c in (gop_res.get("char_details") or [])
-            if c.get("wordIndex") in parsed_base_idx and int(c.get("score", 100)) < 80
-        ]
+        ext_passed_val = bool(extension_included and ext_matched and (ext_score_val or 0) >= pass_threshold)
+        if base_rescored_only:
+            base_weak_chars = list(gop_res.get("weak_chars") or [])
+        else:
+            active_base_idx_final, _ = _compute_active_word_indices(
+                scored_target, base_matched_cand or clean_base_es
+            )
+            base_weak_chars = [
+                c.get("ch")
+                for c in (gop_res.get("char_details") or [])
+                if c.get("wordIndex") in active_base_idx_final and int(c.get("score", 100)) < 80
+            ]
         needs_pronunciation_improvement = bool(
             passed and (score < 90 or len(base_weak_chars) > 0)
         )
@@ -855,10 +954,12 @@ async def score_pronunciation(
         "prosodyTip": prosody_tip,
         "scoredTargetEs": scored_target,
         "baseOnlyRated": base_only_rated,
+        "baseRescoredOnly": base_rescored_only if base_only_rated else False,
         "baseEs": clean_base_es if base_only_rated else "",
         "baseScore": int(score) if base_only_rated else None,
         "baseMatched": bool(base_matched) if base_only_rated else None,
         "extensionEs": clean_ext_es if base_only_rated else "",
+        "extensionIncluded": bool(extension_included) if base_only_rated else False,
         "extensionScore": int(ext_score_val) if (base_only_rated and ext_score_val is not None) else None,
         "extensionMatched": bool(ext_matched) if base_only_rated else None,
         "extensionPassed": bool(ext_passed_val) if (base_only_rated and ext_passed_val is not None) else None,
