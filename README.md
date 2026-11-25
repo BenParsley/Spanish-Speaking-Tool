@@ -11,7 +11,7 @@ A local-first, speech-only web app for practicing Panamanian Spanish (`es-PA`) a
 - **Debug Mode**: Toggleable at the top of Settings to use the app without recording or saving any changes.
 
 ## Requirements
-- Windows with **Google Chrome** (recommended for full microphone and speech support)
+- Windows with **Google Chrome** (required for full microphone and speech support)
 - **Python 3.12** (for the local AI scorer and web server)
 
 ## Quick Start
