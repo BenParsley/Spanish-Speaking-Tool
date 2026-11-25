@@ -39,6 +39,7 @@ import {
   closeMutedAudioModal,
   initAudioModule,
   playCorrectSound,
+  playFullAnswerBonusSound,
   playIncorrectSound,
   speakSpanish,
   speakSpanishWordByWord,
@@ -47,14 +48,6 @@ import {
   updateVolumeUI
 } from './modules/audio.js';
 import { closeBrowserWarningModal, initBrowserCheck } from './modules/browser-check.js';
-import {
-  closeDataMgmtModal,
-  closeDeleteModal,
-  closeMoveDateModal,
-  closeWipeConfirmModal,
-  closeWipeTopicConfirmModal,
-  initDataManagement
-} from './modules/data-management.js';
 import {
   recordOutcome,
   recordPronunciationAttempt,
@@ -65,34 +58,18 @@ import {
 import {
   answerInputEl,
   audioControlsRowEl,
-  blurLockedStatusEl,
-  blurLockedToggleBtn,
   categoryPlaceholderCardEl,
-  dataMgmtModalBackdropEl,
-  deleteModalBackdropEl,
   dirEsToNumBtn,
   dirNumToEsBtn,
   feedbackBarEl,
   feedbackDrawerEl,
-  handsFreeCooldownSelectEl,
-  handsFreeEarconsStatusEl,
-  handsFreeEarconsToggleBtn,
-  handsFreeIncorrectSelectEl,
-  handsFreePauseStageStatusEl,
-  handsFreePauseStageToggleBtn,
-  handsFreeSilenceSelectEl,
-  handsFreeStatusEl,
-  handsFreeToggleBtn,
+  fullAnswerRewardBannerEl,
   hintBtn,
-  hudSrsDueBadgeEl,
-  hudStageSeenEl,
   incorrectScreenMemoryTipEl,
   inputShellEl,
   memoryTipCardEl,
   micBtn,
-  moveDateModalBackdropEl,
   mutedAudioModalBackdropEl,
-  navPathBtn,
   navPlayBtn,
   navStatsBtn,
   pauseProgressBtn,
@@ -106,12 +83,8 @@ import {
   promptStatPinEl,
   promptSubtextEl,
   promptValueEl,
-  scoringStrictnessSelectEl,
-  sessionSummaryBtn,
   settingsPopoverEl,
   settingsToggleBtn,
-  shadowingStatusEl,
-  shadowingToggleBtn,
   skipQuestionBtn,
   slotExampleCueEl,
   speakBtn,
@@ -120,14 +93,13 @@ import {
   speakMeterTrackEl,
   speakSlowBtn,
   speedSelectEl,
+  stageCardEl,
   stageProgressionHudEl,
-  stageSkillTrackEl,
   structurePatternCueEl,
   subjectCompleteModalBackdropEl,
-  themeStatusEl,
-  themeToggleBtn,
   topicEducateModalBackdropEl,
-  ttsEngineSelectEl,
+  trackingToggleBtn,
+  trackingToggleLabelEl,
   typeAnswerFeedbackEl,
   typeSectionEl,
   viewPathEl,
@@ -137,12 +109,11 @@ import {
   voiceRedoBtn,
   weakDrillBannerEl,
   weakDrillBannerTextEl,
-  weakDrillExitBtn,
-  wipeConfirmModalBackdropEl,
-  wipeTopicConfirmModalBackdropEl
+  weakDrillExitBtn
 } from './modules/dom.js';
 import {
   clearGuidebookJumpTimers,
+  clearUntrackedGuidebookSession,
   closeCategoryDropdown,
   closeSkipStageModal,
   closeTopicEducateModal,
@@ -185,7 +156,9 @@ import {
 } from './modules/hands-free.js';
 import {
   clearOpenTimelineStageKeys,
+  closeUnitCogMenu,
   deleteTimelineStagesForCategory,
+  focusUnitAndStageInPathView,
   registerPathViewHooks,
   renderPathView,
   setPathExpandedUnitId
@@ -197,6 +170,7 @@ import {
   closeStageCompleteAwardModal,
   closeStageSeenModal,
   closeSubjectCompleteModal,
+  closeTopicExamFailedModal,
   dismissStageProgressionModalsForHandsFree,
   getCategoryProgress,
   getProgressionSnapshot,
@@ -223,10 +197,13 @@ import {
   resolveActivePhraseItem
 } from './modules/srs.js';
 import {
+  buildProgressExportPayload,
   getActiveSkillPillars,
   getHighestUnlockedCategoryId,
   getPreviousBlockingCategory,
+  importProgressPayload,
   isCategoryUnlocked,
+  isTrackingDisabled,
   persisted,
   savePersistedData,
   state
@@ -235,6 +212,7 @@ import {
   buildStatsTable,
   initStatsView,
   registerStatsViewHooks,
+  renderStatsAchievements,
   renderStatsCalendar,
   statsCalendarState,
   switchStatsSubView
@@ -246,11 +224,6 @@ import {
   logSpeechEvent
 } from './modules/speech-console.js';
 import { initStudyTimer, markStudyActivity, pauseStudyTimerNow, updateStudyTimerUI } from './modules/study-timer.js';
-import {
-  closeTestingSuiteModal,
-  initTestingTools,
-  syncTestingExpectedBanner
-} from './modules/testing-tools.js';
 import {
   escapeHtmlText,
   getPctTierClass,
@@ -317,24 +290,40 @@ function clearFeedbackTimer() {
   }
 }
 
-function applyTheme() {
-  document.documentElement.setAttribute('data-theme', state.theme);
-  const isDark = state.theme === 'dark';
-  themeToggleBtn.classList.toggle('active', isDark);
-  themeToggleBtn.setAttribute('aria-pressed', String(isDark));
-  themeStatusEl.textContent = isDark ? 'On' : 'Off';
+function syncTrackingDisabledUI() {
+  const off = isTrackingDisabled();
+  document.body.classList.toggle('is-tracking-disabled', off);
+  if (trackingToggleBtn) {
+    trackingToggleBtn.classList.toggle('is-tracking-disabled', off);
+    trackingToggleBtn.setAttribute('aria-checked', String(off));
+    trackingToggleBtn.title = off
+      ? 'Debug Mode is ON — tracking is disabled and no changes are saved. Click to exit Debug Mode.'
+      : 'Enable Debug Mode to use the website without affecting or tracking any changes';
+  }
+  if (trackingToggleLabelEl) {
+    trackingToggleLabelEl.textContent = off ? 'On' : 'Off';
+  }
 }
 
-function applyBlurLocked() {
-  const isBlurred = state.blurLockedContent !== false;
-  document.documentElement.setAttribute('data-blur-locked', isBlurred ? 'true' : 'false');
-  if (blurLockedToggleBtn) {
-    blurLockedToggleBtn.classList.toggle('active', isBlurred);
-    blurLockedToggleBtn.setAttribute('aria-pressed', String(isBlurred));
+function toggleTrackingDisabled() {
+  const turningOff = !isTrackingDisabled();
+  if (turningOff) {
+    // Flush and stop any active study time accumulated before entering Developer Mode
+    pauseStudyTimerNow({ resetCarry: true });
+    clearUntrackedGuidebookSession();
+    state.trackingDisabled = true;
+    logSpeechEvent('DEV MODE', 'Debug Mode enabled — changes and progress will not be recorded or saved');
+  } else {
+    state.trackingDisabled = false;
+    clearUntrackedGuidebookSession();
+    enforcePracticeGateForCurrentStage();
+    logSpeechEvent('DEV MODE', 'Debug Mode disabled — progress recording resumed');
   }
-  if (blurLockedStatusEl) {
-    blurLockedStatusEl.textContent = isBlurred ? 'On' : 'Off';
-  }
+  syncTrackingDisabledUI();
+  updateStudyTimerUI();
+  updateDailyGoalUI();
+  syncPracticeModeCardUI({ autoSpeak: false, preserveSlotChoice: true });
+  updatePromptStatPin();
 }
 
 function closeSettingsPopover() {
@@ -391,9 +380,11 @@ function ensurePreselectedSlotOptionForItem(item, { resetIfExhausted = true } = 
 
   let usedSet = getUsedSlotOptionsSetForItem(item.id);
   if (resetIfExhausted && usedSet.size >= slotCfg.options.length) {
-    delete state.usedSlotOptionsByItem[item.id];
+    if (!isTrackingDisabled()) {
+      delete state.usedSlotOptionsByItem[item.id];
+      savePersistedData();
+    }
     usedSet = new Set();
-    savePersistedData();
   }
 
   const current = getSelectedSlotChoiceForItem(item);
@@ -408,6 +399,7 @@ function ensurePreselectedSlotOptionForItem(item, { resetIfExhausted = true } = 
 }
 
 function markSlotOptionsUsedForItem(item, meta = {}) {
+  if (isTrackingDisabled()) return [];
   if (!item || !item.id) return [];
   const slotCfg = getSlotConfigForItem(item);
   if (!slotCfg || slotCfg.slotType !== 'spanish_options' || !Array.isArray(slotCfg.options) || slotCfg.options.length === 0) {
@@ -454,9 +446,9 @@ function syncSlotExampleCueUI(item, slotCfg, chosen) {
     return;
   }
   if (state.practiceMode) {
-    slotExampleCueEl.innerHTML = `<span class="slot-example-badge">Example:</span> <span class="slot-example-phrase">"${escapeHtmlText(exampleEn)}"</span> <span class="slot-example-note">(${escapeHtmlText(exampleEs)}) · Any valid answer or combination is accepted</span>`;
+    slotExampleCueEl.innerHTML = `<span class="slot-example-badge">Optional Extension Example:</span> <span class="slot-example-phrase">"${escapeHtmlText(exampleEn)}"</span> <span class="slot-example-note">(${escapeHtmlText(exampleEs)}) · Only the base is required; add any valid extension for a bonus</span>`;
   } else {
-    slotExampleCueEl.innerHTML = `<span class="slot-example-badge">Example:</span> <span class="slot-example-phrase">"${escapeHtmlText(exampleEn)}"</span> <span class="slot-example-note">· Any valid answer or combination in Spanish is accepted</span>`;
+    slotExampleCueEl.innerHTML = `<span class="slot-example-badge">Optional Extension Example:</span> <span class="slot-example-phrase">"${escapeHtmlText(exampleEn)}"</span> <span class="slot-example-note">· Only the base is required; include any valid Spanish extension for a bonus</span>`;
   }
   slotExampleCueEl.classList.remove('hidden');
 }
@@ -476,16 +468,65 @@ function getActivePhraseData(explicitItem = null) {
   return item;
 }
 
+function buildSlotEnglishSegments(patternEn, placeholderText) {
+  const pat = String(patternEn || '').trim();
+  const ph = String(placeholderText || '').trim();
+  if (!pat || !ph) return [];
+  const token = '{en}';
+  const idx = pat.indexOf(token);
+  if (idx === -1) return [];
+  const before = pat.slice(0, idx).trim();
+  const after = pat.slice(idx + token.length).trim();
+  const segs = [];
+  if (before) {
+    const trailComma = before.match(/^(.+?)(,)$/);
+    if (trailComma) {
+      segs.push({ text: trailComma[1].trim(), role: 'base' });
+      segs.push({ text: trailComma[2], role: 'punct' });
+    } else {
+      segs.push({ text: before, role: 'base' });
+    }
+  }
+  segs.push({ text: ph, role: 'extension' });
+  if (after) {
+    if (/^[?!.,;:]+$/.test(after)) {
+      segs.push({ text: after, role: 'punct' });
+    } else {
+      segs.push({ text: after, role: 'base' });
+    }
+  }
+  return segs;
+}
+
+function buildPersonalSlotEnglishSegments(enText) {
+  const str = String(enText || '').trim();
+  const m = str.match(/^(.*?)(\[[^\]]+\])(.*)$/);
+  if (!m) return [];
+  const segs = [];
+  const before = m[1].trim();
+  const ext = m[2].trim();
+  const after = m[3].trim();
+  if (before) segs.push({ text: before, role: 'base' });
+  if (ext) segs.push({ text: ext, role: 'extension' });
+  if (after) {
+    segs.push({ text: after, role: /^[?!.,;:]+$/.test(after) ? 'punct' : 'base' });
+  }
+  return segs.some((s) => s.role === 'base') && segs.some((s) => s.role === 'extension') ? segs : [];
+}
+
 function getActiveQuestionSplit() {
   if (state.activeCategory === 'numbers') {
     const ctx = state.currentContext;
     if (ctx?.hasExtension && ctx.baseEs && ctx.extensionEs) {
       return {
         hasExtension: true,
+        trackExtensionInMastery: true,
         catId: 'numbers',
         itemId: state.currentNum,
         baseEs: ctx.baseEs,
         baseAltEs: Array.isArray(ctx.baseAltEs) ? ctx.baseAltEs : [ctx.baseEs],
+        baseEn: ctx.baseEn || String(state.currentNum),
+        enSegments: Array.isArray(ctx.enSegments) ? ctx.enSegments : [],
         extensionEs: ctx.extensionEs,
         extensionEn: ctx.extensionEn || ctx.extensionEs,
         extensionLabelEs: ctx.extensionLabelEs || ctx.extensionEs,
@@ -513,10 +554,13 @@ function getActiveQuestionSplit() {
     const inst = state.currentInstance;
     return {
       hasExtension: true,
+      trackExtensionInMastery: true,
       catId: state.activeCategory,
       itemId: item.id,
       baseEs: inst.baseEs,
       baseAltEs: Array.isArray(inst.baseAltEs) ? inst.baseAltEs : [inst.baseEs],
+      baseEn: inst.baseEn || inst.en,
+      enSegments: Array.isArray(inst.enSegments) ? inst.enSegments : [],
       extensionEs: inst.extensionEs,
       extensionEn: inst.extensionEn || inst.extensionEs,
       extensionLabelEs: inst.extensionEs,
@@ -563,12 +607,20 @@ function getActiveQuestionSplit() {
       const baseAltEs = prefixList
         .map((p) => [p, primarySuffix].filter(Boolean).join(' ').trim())
         .filter(Boolean);
+      const enSegments = buildSlotEnglishSegments(slotCfg.examplePatternEn, slotCfg.placeholder);
+      const baseEn =
+        enSegments.length > 0
+          ? enSegments.filter((s) => s.role === 'base').map((s) => s.text).join(' ').trim()
+          : item.en;
       return {
         hasExtension: true,
+        trackExtensionInMastery: true,
         catId: state.activeCategory,
         itemId: item.id,
         baseEs,
         baseAltEs,
+        baseEn,
+        enSegments,
         extensionEs: optObj.es,
         extensionEn: optObj.en || optObj.es,
         extensionLabelEs: optObj.es,
@@ -581,7 +633,113 @@ function getActiveQuestionSplit() {
     }
   }
 
+  // 3. Personal open-slot items (e.g., "me llamo [Your name]") — only base required, personal name optional bonus
+  if (item.slotTemplate && slotCfg?.slotType === 'personal' && slotCfg.ttsStemEs) {
+    const baseWords = tokenizeSpanishWords(slotCfg.ttsStemEs);
+    const enSegments = buildPersonalSlotEnglishSegments(item.en);
+    const baseEn =
+      enSegments.length > 0
+        ? enSegments.filter((s) => s.role === 'base').map((s) => s.text).join(' ').trim()
+        : item.en;
+    return {
+      hasExtension: true,
+      trackExtensionInMastery: false,
+      catId: state.activeCategory,
+      itemId: item.id,
+      baseEs: slotCfg.ttsStemEs,
+      baseAltEs: Array.isArray(item.slotTemplate.prefixEs) ? item.slotTemplate.prefixEs : [slotCfg.ttsStemEs],
+      baseEn,
+      enSegments,
+      extensionEs: '__slot_any__',
+      extensionEn: slotCfg.placeholder || '[Your answer]',
+      extensionLabelEs: '',
+      extensionLabelEn: slotCfg.placeholder || '[Your answer]',
+      extensionKey: '',
+      extensionGroup: 'personal',
+      baseWordIndices: baseWords.map((_, i) => i),
+      extensionWordIndices: []
+    };
+  }
+
   return { hasExtension: false };
+}
+
+function clearFullAnswerVisualReward() {
+  const promptZoneEl = document.querySelector('.prompt-zone');
+  if (stageCardEl) stageCardEl.classList.remove('is-full-answer-bonus');
+  if (promptZoneEl) promptZoneEl.classList.remove('is-full-answer-bonus');
+  if (inputShellEl) inputShellEl.classList.remove('is-full-answer-bonus');
+  if (typeAnswerFeedbackEl) typeAnswerFeedbackEl.classList.remove('is-full-answer-bonus');
+  if (feedbackDrawerEl) feedbackDrawerEl.classList.remove('is-full-answer-bonus');
+  if (fullAnswerRewardBannerEl) {
+    fullAnswerRewardBannerEl.innerHTML = '';
+    fullAnswerRewardBannerEl.classList.add('hidden');
+  }
+}
+
+function triggerFullAnswerVisualReward({
+  extensionEs = '',
+  extensionScore = null,
+  trackedInMastery = true,
+  isPractice = false
+} = {}) {
+  playFullAnswerBonusSound();
+  const promptZoneEl = document.querySelector('.prompt-zone');
+  if (stageCardEl) stageCardEl.classList.add('is-full-answer-bonus');
+  if (promptZoneEl) promptZoneEl.classList.add('is-full-answer-bonus');
+  if (inputShellEl) inputShellEl.classList.add('is-full-answer-bonus');
+  if (typeAnswerFeedbackEl) typeAnswerFeedbackEl.classList.add('is-full-answer-bonus');
+  if (feedbackDrawerEl) feedbackDrawerEl.classList.add('is-full-answer-bonus');
+
+  if (fullAnswerRewardBannerEl) {
+    const extChipText = extensionEs
+      ? `+ ${extensionEs}${Number.isFinite(Number(extensionScore)) ? ` · ${Math.round(Number(extensionScore))}%` : ''}`
+      : '+ Extension Included';
+    const trackedBit =
+      trackedInMastery && !isPractice
+        ? '<span class="full-answer-reward-tracked">· Tracked in Mastery</span>'
+        : '';
+    fullAnswerRewardBannerEl.innerHTML = `
+      <span class="full-answer-reward-star" aria-hidden="true">★</span>
+      <span class="full-answer-reward-title">Full Answer Bonus!</span>
+      <span class="full-answer-reward-chip">${escapeHtmlText(extChipText)}</span>
+      ${trackedBit}
+    `;
+    fullAnswerRewardBannerEl.classList.remove('hidden');
+    // Restart animation cleanly
+    fullAnswerRewardBannerEl.style.animation = 'none';
+    void fullAnswerRewardBannerEl.offsetWidth;
+    fullAnswerRewardBannerEl.style.animation = '';
+  }
+}
+
+function renderPromptValueWithSplit(fallbackText, { allowSplit = true } = {}) {
+  if (!promptValueEl) return;
+  const split = allowSplit ? getActiveQuestionSplit() : { hasExtension: false };
+  const hasVisualSplit = Boolean(
+    allowSplit &&
+    split?.hasExtension &&
+    Array.isArray(split.enSegments) &&
+    split.enSegments.length > 0
+  );
+
+  if (hasVisualSplit) {
+    promptValueEl.classList.add('has-ext-split');
+    promptValueEl.innerHTML = split.enSegments
+      .map((seg) => {
+        if (seg.role === 'extension') {
+          return `<span class="prompt-part-ext" title="Optional variant — include for a bonus reward">${escapeHtmlText(seg.text)}</span>`;
+        }
+        if (seg.role === 'punct') {
+          return `<span class="prompt-part-punct">${escapeHtmlText(seg.text)}</span>`;
+        }
+        return `<span class="prompt-part-base">${escapeHtmlText(seg.text)}</span>`;
+      })
+      .join(' ');
+  } else {
+    promptValueEl.classList.remove('has-ext-split');
+    promptValueEl.textContent = String(fallbackText || '');
+  }
 }
 
 function resolveSpokenExtensionInfo(heard = '', scoredTargetEs = '') {
@@ -623,9 +781,12 @@ function resolveSpokenExtensionInfo(heard = '', scoredTargetEs = '') {
 }
 
 function recordStructureFillOutcome(isCorrect, meta = {}) {
+  if (isTrackingDisabled()) return;
   if (meta.skipped || state.activeCategory === 'numbers') return;
   const inst = state.currentInstance;
   if (!inst || !inst.isDynamic || !inst.itemId || !inst.fillKey) return;
+  // When a dynamic structure has an optional extension, only track the fill variation if the user included it
+  if (inst.hasExtension && meta.extensionIncluded === false) return;
   if (!state.structureFillStats || typeof state.structureFillStats !== 'object') {
     state.structureFillStats = {};
   }
@@ -633,9 +794,10 @@ function recordStructureFillOutcome(isCorrect, meta = {}) {
     state.structureFillStats[inst.itemId] = {};
   }
   const prev = state.structureFillStats[inst.itemId][inst.fillKey] || { c: 0, i: 0 };
+  const extCorrect = inst.hasExtension && meta.extensionRating ? Boolean(meta.extensionRating.isCorrect) : isCorrect;
   state.structureFillStats[inst.itemId][inst.fillKey] = {
-    c: Math.max(0, Number(prev.c) || 0) + (isCorrect ? 1 : 0),
-    i: Math.max(0, Number(prev.i) || 0) + (isCorrect ? 0 : 1)
+    c: Math.max(0, Number(prev.c) || 0) + (extCorrect ? 1 : 0),
+    i: Math.max(0, Number(prev.i) || 0) + (extCorrect ? 0 : 1)
   };
 }
 
@@ -677,9 +839,7 @@ function cycleDynamicVariationInPractice() {
     state.lastFillKeyByItem = {};
   }
   state.lastFillKeyByItem[item.id] = nextInst.fillKey;
-  if (promptValueEl) {
-    promptValueEl.textContent = nextInst.en;
-  }
+  renderPromptValueWithSplit(nextInst.en, { allowSplit: true });
   renderPracticeSpanishWords(nextInst.es);
   syncStructurePatternCueUI();
   if (Number(state.volume) > 0) {
@@ -734,25 +894,16 @@ function updatePromptStatPin() {
   const incorrect = Math.max(0, Number(entry?.incorrect) || 0);
   const total = correct + incorrect;
 
-  promptStatPinEl.classList.remove('hidden', 'is-new', 'is-good', 'is-mid', 'is-bad', 'is-bad-warn', 'is-critical');
-  if (total === 0) {
-    promptStatPinEl.textContent = 'New word';
-    promptStatPinEl.classList.add('is-new');
-    promptStatPinEl.title = 'First time practicing this item';
-  } else {
-    const pct = Math.round((correct / total) * 100);
-    if ((incorrect >= 4 && pct < 50) || (incorrect >= 3 && pct <= 25)) {
-      promptStatPinEl.textContent = `Struggling · ${pct}% (${incorrect} missed)`;
-      promptStatPinEl.classList.add('is-critical');
-    } else if (incorrect >= 2 && pct < 60) {
-      promptStatPinEl.textContent = `${pct}% correct · ${incorrect} missed`;
-      promptStatPinEl.classList.add('is-bad-warn');
-    } else {
-      promptStatPinEl.textContent = `${pct}% correct`;
-      promptStatPinEl.classList.add(getPctTierClass(pct));
-    }
-    promptStatPinEl.title = `${correct}/${total} correct (${pct}% · ${incorrect} missed)`;
+  if (incorrect < 5) {
+    promptStatPinEl.classList.add('hidden');
+    return;
   }
+
+  const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+  promptStatPinEl.classList.remove('hidden', 'is-new', 'is-good', 'is-mid', 'is-bad', 'is-bad-warn', 'is-critical');
+  promptStatPinEl.textContent = `Struggling · ${pct}% (${incorrect} missed)`;
+  promptStatPinEl.classList.add('is-critical');
+  promptStatPinEl.title = `${correct}/${total} correct (${pct}% · ${incorrect} missed)`;
 }
 
 function syncQuestionTypeUI() {
@@ -760,75 +911,6 @@ function syncQuestionTypeUI() {
   if (snap.isUnlocked) {
     state.questionType = snap.phaseQuestionType;
     state.direction = snap.phaseDirection;
-  }
-
-  if (stageSkillTrackEl) {
-    const activePillars = getActiveSkillPillars();
-    const pills = Array.from(stageSkillTrackEl.querySelectorAll('.skill-step-pill'));
-    let activeIdxFound = -1;
-    pills.forEach((pill, idx) => {
-      const key = pill.dataset.skill || SKILL_PILLARS[idx];
-      const skillInfo = snap.skills?.[key];
-      const meta = SKILL_META[key]?.label;
-      const isDone = Boolean(snap.isUnlocked && skillInfo?.proficient);
-      const isActive = Boolean(
-        snap.isUnlocked && !snap.isCompletedFinal && snap.activeSkillKey === key
-      );
-      if (isActive) {
-        const visibleIdx = activePillars.indexOf(key);
-        activeIdxFound = visibleIdx >= 0 ? visibleIdx : idx;
-      }
-      pill.classList.toggle('is-done', isDone);
-      pill.classList.toggle('is-active', isActive);
-      pill.setAttribute('aria-current', isActive ? 'step' : 'false');
-      if (isDone) {
-        pill.setAttribute('role', 'button');
-        pill.tabIndex = 0;
-      } else {
-        pill.removeAttribute('role');
-        pill.removeAttribute('tabindex');
-      }
-      if (meta && skillInfo) {
-        const shownCorrect = isDone
-          ? skillInfo.target
-          : Math.min(skillInfo.correct, skillInfo.target);
-        const pct = isDone
-          ? 100
-          : Math.min(95, Math.max(0, Number(skillInfo.pct) || 0));
-        pill.style.setProperty('--skill-pct', String(pct));
-        const countEl = pill.querySelector('.skill-step-count');
-        if (countEl) {
-          if (snap.isExamStage) {
-            countEl.textContent = `${skillInfo.total}/${skillInfo.target} · ${skillInfo.accRounded}%`;
-          } else {
-            countEl.textContent = isActive && !isDone
-              ? `${shownCorrect}/${skillInfo.target} · ${skillInfo.accRounded}%`
-              : `${shownCorrect}/${skillInfo.target}`;
-          }
-        }
-        pill.title = isDone
-          ? `${meta}: Complete (click to re-introduce)`
-          : snap.isExamStage
-            ? `${meta}: Hard Topic Exam Q ${skillInfo.total}/${skillInfo.target} (${skillInfo.accRounded}% · ≥${snap.minAccuracy}% required)`
-            : `${meta}: ${skillInfo.correct}/${skillInfo.target} correct (${skillInfo.accRounded}% · ≥${snap.minAccuracy}% required)`;
-      }
-    });
-    stageSkillTrackEl.dataset.activeIndex = String(activeIdxFound);
-    if (activeIdxFound >= 0) {
-      stageSkillTrackEl.style.setProperty('--active-skill-index', String(activeIdxFound));
-    }
-  }
-
-  if (hudStageSeenEl) {
-    const { seenCount, totalCount } = getStageSeenProgress(state.activeCategory, snap.stageIndex);
-    const shouldShow = Boolean(snap.isUnlocked && totalCount > 0);
-    hudStageSeenEl.classList.toggle('hidden', !shouldShow);
-    if (shouldShow) {
-      hudStageSeenEl.textContent = `${seenCount}/${totalCount} seen`;
-      hudStageSeenEl.classList.toggle('is-complete', seenCount >= totalCount);
-      const skillScopeLabel = state.speakOnlyMode ? 'Speak' : 'Read, Write, Listen & Speak';
-      hudStageSeenEl.title = `${seenCount} of ${totalCount} words/phrases seen at least once in ${skillScopeLabel}`;
-    }
   }
 
   const isSpeakMode = state.questionType === 'speak';
@@ -882,7 +964,6 @@ function finalizeLoadedQuestionPrompt({
   updateMemoryTipUI();
   updateSrsDueBadge();
   syncWeakDrillBannerUI();
-  syncTestingExpectedBanner();
   const hfActive = isHandsFreeRunning() && state.activeView === 'play';
   syncPracticeModeCardUI({ autoSpeak: !shouldShowIntro && !hfActive });
   if (hfActive) {
@@ -896,18 +977,10 @@ function finalizeLoadedQuestionPrompt({
   if (shouldShowIntro && introTarget !== null) {
     openWordIntroModal(
       getWordIntroDetails(state.activeCategory, stageIndex, introTarget),
-      { playAudioOnClose: isAudioQuestion || Boolean(state.shadowingMode) || Boolean(state.practiceMode) }
+      { playAudioOnClose: isAudioQuestion || Boolean(state.practiceMode) }
     );
   } else if (state.practiceMode && state.activeView === 'play') {
     // Practice Mode already displays Spanish + audio controls and auto-speaks above
-  } else if (state.shadowingMode && !isTopicExamActive() && state.activeView === 'play') {
-    if (Number(state.volume) > 0) {
-      scheduleNewWordAutoSpeak(getSpokenTextForCurrentQuestion());
-    }
-    if (typeAnswerFeedbackEl) {
-      typeAnswerFeedbackEl.textContent = 'Shadowing · Listen, then speak aloud';
-      typeAnswerFeedbackEl.classList.add('is-transcript');
-    }
   } else if (!isSpeakQuestion) {
     setTimeout(() => answerInputEl.focus(), 15);
   }
@@ -928,6 +1001,7 @@ function getQuantityScenarioMissCount(scenarioId) {
 }
 
 function recordQuantityScenarioMiss(scenarioId = '') {
+  if (isTrackingDisabled()) return;
   const id =
     scenarioId ||
     (state.activeCategory === 'numbers' && state.currentContext?.isQuantity
@@ -973,20 +1047,87 @@ function renderMemoryTipHTML(tipText, missCount) {
 
 function updateMemoryTipUI() {
   if (!memoryTipCardEl) return;
-  if (isTopicExamActive()) {
-    memoryTipCardEl.innerHTML = '';
-    memoryTipCardEl.classList.add('hidden');
-    return;
+  memoryTipCardEl.innerHTML = '';
+  memoryTipCardEl.classList.add('hidden');
+}
+
+const SKIP_COOLDOWN_WINDOW = 30;
+const SKIP_COOLDOWN_COUNT = 2;
+const SKIP_COOLDOWN_FIRST_BAN = 10;
+const SKIP_COOLDOWN_EXTRA_BAN = 15;
+
+function normalizeSkipExpectedEs(text) {
+  return stripAccents(normalizePhraseSpanish(String(text || ''))).trim();
+}
+
+function getSkipCooldownKeyForCurrentQuestion() {
+  if (state.activeCategory === 'numbers') {
+    return `numbers:${state.currentNum}`;
   }
-  const missCount = getCurrentItemIncorrectCount();
-  const tipText = getMemoryTipForCurrentQuestion();
-  if (!state.practiceMode && missCount >= 3 && tipText) {
-    memoryTipCardEl.innerHTML = renderMemoryTipHTML(tipText, missCount);
-    memoryTipCardEl.classList.remove('hidden');
+  const activeItem = resolveActivePhraseItem();
+  return activeItem ? `${state.activeCategory}:${activeItem.id}` : '';
+}
+
+function isItemOnSkipCooldown(itemKey) {
+  if (!itemKey || !state.skipCooldownUntilByKey) return false;
+  const untilSeq = Number(state.skipCooldownUntilByKey[itemKey]) || 0;
+  return untilSeq > (Number(state.sessionQuestionSeq) || 0);
+}
+
+function incrementPersistentBanCount(itemKey) {
+  if (isTrackingDisabled() || !itemKey) return;
+  if (itemKey.startsWith('numbers:')) {
+    const n = Number(itemKey.slice('numbers:'.length));
+    if (Number.isInteger(n) && state.counts?.[n]) {
+      state.counts[n].banCount = Math.max(0, Math.floor(Number(state.counts[n].banCount) || 0)) + 1;
+    }
   } else {
-    memoryTipCardEl.innerHTML = '';
-    memoryTipCardEl.classList.add('hidden');
+    const itemId = itemKey.includes(':') ? itemKey.split(':').slice(1).join(':') : itemKey;
+    if (itemId && state.phraseCounts?.[itemId]) {
+      state.phraseCounts[itemId].banCount = Math.max(0, Math.floor(Number(state.phraseCounts[itemId].banCount) || 0)) + 1;
+    }
   }
+}
+
+function recordSkipForCooldown(itemKey) {
+  if (!itemKey) return 0;
+  if (!state.recentSkipQuestionsByKey || typeof state.recentSkipQuestionsByKey !== 'object') {
+    state.recentSkipQuestionsByKey = {};
+  }
+  if (!state.skipCooldownUntilByKey || typeof state.skipCooldownUntilByKey !== 'object') {
+    state.skipCooldownUntilByKey = {};
+  }
+  if (!state.skipBanTierByKey || typeof state.skipBanTierByKey !== 'object') {
+    state.skipBanTierByKey = {};
+  }
+  const seq = Number(state.sessionQuestionSeq) || 0;
+  const prevTier = Math.max(0, Number(state.skipBanTierByKey[itemKey]) || 0);
+  const recent = Array.isArray(state.recentSkipQuestionsByKey[itemKey])
+    ? state.recentSkipQuestionsByKey[itemKey].filter((q) => q >= seq - SKIP_COOLDOWN_WINDOW)
+    : [];
+  recent.push(seq);
+
+  // If this base question already triggered a 10-question ban earlier (tier >= 1),
+  // a 3rd+ skip bans it for an additional 15 questions (10 + 15 = 25 questions).
+  if (prevTier >= 1) {
+    const banLen = SKIP_COOLDOWN_FIRST_BAN + SKIP_COOLDOWN_EXTRA_BAN;
+    state.skipBanTierByKey[itemKey] = prevTier + 1;
+    state.skipCooldownUntilByKey[itemKey] = seq + banLen;
+    state.recentSkipQuestionsByKey[itemKey] = [];
+    incrementPersistentBanCount(itemKey);
+    return banLen;
+  }
+
+  if (recent.length >= SKIP_COOLDOWN_COUNT) {
+    state.skipBanTierByKey[itemKey] = 1;
+    state.skipCooldownUntilByKey[itemKey] = seq + SKIP_COOLDOWN_FIRST_BAN;
+    state.recentSkipQuestionsByKey[itemKey] = [];
+    incrementPersistentBanCount(itemKey);
+    return SKIP_COOLDOWN_FIRST_BAN;
+  }
+
+  state.recentSkipQuestionsByKey[itemKey] = recent;
+  return 0;
 }
 
 function getActivePracticeStageKey(catId = state.activeCategory) {
@@ -1001,7 +1142,9 @@ function getPracticeSequenceForStage(catId = state.activeCategory) {
     const stageItems = getItemsForStage(catId, snap.stageIndex);
     return stageItems.length > 0 ? stageItems : getItemsForCategory(catId);
   }
-  const pool = getPoolForRange(state.range);
+  const rawNumPool = getPoolForRange(state.range);
+  const nonCooldownNumPool = rawNumPool.filter((n) => !isItemOnSkipCooldown(`numbers:${n}`));
+  const pool = nonCooldownNumPool.length > 0 ? nonCooldownNumPool : rawNumPool;
   if (pool.length <= 10) return pool;
   const curated = [];
   const targetCount = 10;
@@ -1044,6 +1187,7 @@ function enforcePracticeGateForCurrentStage() {
     state.practiceMode = false;
     return;
   }
+  if (isTrackingDisabled()) return;
   if (state.weakDrillActive || state.polishDrillActive) return;
   const prog = getPracticeStageProgress(state.activeCategory);
   if (!prog.isComplete) {
@@ -1052,6 +1196,7 @@ function enforcePracticeGateForCurrentStage() {
 }
 
 function markCurrentPracticeItemCompleted() {
+  if (isTrackingDisabled()) return { justCompleted: false };
   if (!state.practiceMode) return { justCompleted: false };
   const prog = getPracticeStageProgress(state.activeCategory);
   const itemKey = getCurrentPracticeItemKey();
@@ -1084,12 +1229,16 @@ function renderPracticeSpanishWords(text, activeWordIdx = -1) {
     promptSubtextEl.innerHTML = '';
     return;
   }
+  const split = getActiveQuestionSplit();
+  const useSplitClasses = Boolean(split?.hasExtension && Array.isArray(split.baseWordIndices) && split.baseWordIndices.length > 0);
+  const baseIdxSet = useSplitClasses ? new Set(split.baseWordIndices.map(Number)) : null;
+  const extIdxSet = useSplitClasses ? new Set((split.extensionWordIndices || []).map(Number)) : null;
   let spanishWordCounter = 0;
   let html = '';
   tokens.forEach((tok, tokIdx) => {
     const prefix = tokIdx > 0 && tok.type !== 'punct' ? ' ' : '';
     if (tok.type === 'slot') {
-      html += `${prefix}<span class="slot-placeholder-chip" title="Say your own answer here">${escapeHtmlText(tok.text)}</span>`;
+      html += `${prefix}<span class="slot-placeholder-chip" title="Optional extension — include for a bonus reward">${escapeHtmlText(tok.text)}</span>`;
       return;
     }
     if (tok.type === 'punct') {
@@ -1099,7 +1248,11 @@ function renderPracticeSpanishWords(text, activeWordIdx = -1) {
     const idx = spanishWordCounter;
     spanishWordCounter += 1;
     const activeCls = idx === activeWordIdx ? ' practice-word-active' : '';
-    html += `${prefix}<button type="button" class="practice-word-btn${activeCls}" data-practice-word="${escapeHtmlText(tok.spoken)}" title="Click to hear &quot;${escapeHtmlText(tok.spoken)}&quot;">${escapeHtmlText(tok.text)}</button>`;
+    const roleCls = useSplitClasses
+      ? (extIdxSet?.has(idx) ? ' is-ext-word' : baseIdxSet?.has(idx) ? ' is-base-word' : '')
+      : '';
+    const roleNote = roleCls === ' is-ext-word' ? ' (Optional extension)' : roleCls === ' is-base-word' ? ' (Required base)' : '';
+    html += `${prefix}<button type="button" class="practice-word-btn${roleCls}${activeCls}" data-practice-word="${escapeHtmlText(tok.spoken)}" title="Click to hear &quot;${escapeHtmlText(tok.spoken)}&quot;${roleNote}">${escapeHtmlText(tok.text)}</button>`;
   });
   promptSubtextEl.innerHTML = html;
 }
@@ -1134,14 +1287,16 @@ function syncExamQuantityScenarioPool() {
 }
 
 function markExamQuantityScenarioUsed(meta = {}) {
+  if (isTrackingDisabled()) return;
   if (state.practiceMode || state.activeCategory !== 'numbers' || !state.currentContext?.isQuantity) {
     return;
   }
+  if (meta.extensionIncluded === false) return;
   syncExamQuantityScenarioPool();
   const detected =
     detectQuantityScenarioFromSpanish(meta.scoredTargetEs || '', state.currentNum) ||
     detectQuantityScenarioFromSpanish(meta.heard || '', state.currentNum) ||
-    state.currentContext.quantityScenarioId ||
+    (meta.extensionIncluded ? state.currentContext.quantityScenarioId : '') ||
     '';
   if (detected) {
     state.usedExamQuantityScenarios.add(detected);
@@ -1150,6 +1305,7 @@ function markExamQuantityScenarioUsed(meta = {}) {
 }
 
 function recordGradedOutcome(isCorrect, meta = {}) {
+  if (isTrackingDisabled()) return;
   if (isCorrect) {
     markExamQuantityScenarioUsed(meta);
     if (state.activeCategory !== 'numbers') {
@@ -1251,8 +1407,6 @@ function syncSlotOptionsDropdownUI({ preserveCurrentChoice = false } = {}) {
 }
 
 function syncPracticeModeCardUI({ autoSpeak = false, preserveSlotChoice = false } = {}) {
-  const btn = document.getElementById('practice-mode-btn');
-  const label = document.getElementById('practice-mode-label');
   const bar = document.getElementById('practice-controls-bar');
   const hardExam = isTopicExamActive();
   if (hardExam && state.practiceMode) {
@@ -1260,35 +1414,8 @@ function syncPracticeModeCardUI({ autoSpeak = false, preserveSlotChoice = false 
   }
   const on = Boolean(!hardExam && state.practiceMode);
   const prog = getPracticeStageProgress(state.activeCategory);
-  const locked = !hardExam && !prog.isComplete;
+  const locked = !hardExam && !isTrackingDisabled() && !prog.isComplete;
 
-  if (btn) {
-    btn.classList.toggle('is-practice-active', on && !locked);
-    btn.classList.toggle('is-practice-locked', locked);
-    btn.classList.toggle('is-practice-ready', on && !locked);
-    btn.classList.toggle('is-exam-locked', hardExam);
-    btn.setAttribute('aria-pressed', String(on));
-    if (hardExam) {
-      btn.title = 'Practice Mode is disabled during the Hard Topic Exam (30 questions · 90% to pass)';
-    } else if (locked) {
-      btn.title = `Complete Practice Mode (${prog.doneCount}/${prog.totalCount}) to unlock Graded Mode for this stage`;
-    } else if (on) {
-      btn.title = 'Practice complete! Click to switch into Graded Mode';
-    } else {
-      btn.title = 'Study mode: shows English + Spanish with audio playback and ungraded speaking practice';
-    }
-  }
-  if (label) {
-    if (hardExam) {
-      label.textContent = 'Final Exam (90%)';
-    } else if (locked) {
-      label.textContent = `Practice ${prog.doneCount}/${prog.totalCount}`;
-    } else if (on) {
-      label.textContent = 'Start Graded Test →';
-    } else {
-      label.textContent = 'Practice Mode';
-    }
-  }
   if (bar) {
     bar.classList.toggle('hidden', !on);
   }
@@ -1313,7 +1440,7 @@ function syncPracticeModeCardUI({ autoSpeak = false, preserveSlotChoice = false 
     const slotCfg = item ? getSlotConfigForItem(item) : null;
     if (!locked) {
       typeAnswerFeedbackEl.textContent =
-        'Practice complete! Click "Start Graded Test →" above when ready, or keep practicing.';
+        'Practice complete! Click Next Word → to start the Graded Test.';
     } else if (slotCfg?.slotType === 'personal') {
       typeAnswerFeedbackEl.textContent = `Practice (${prog.doneCount}/${prog.totalCount}) · Say the Spanish words + ${slotCfg.placeholder}, or click Next Word →`;
     } else if (slotCfg?.slotType === 'spanish_options') {
@@ -1327,11 +1454,11 @@ function syncPracticeModeCardUI({ autoSpeak = false, preserveSlotChoice = false 
     const item = state.activeCategory !== 'numbers' ? resolveActivePhraseItem() : null;
     const slotCfg = item ? getSlotConfigForItem(item) : null;
     if (slotCfg?.slotType === 'personal') {
-      typeAnswerFeedbackEl.textContent = `Say the Spanish phrase with ${slotCfg.placeholder} at the end.`;
+      typeAnswerFeedbackEl.textContent = `Only the base is required — add ${slotCfg.placeholder} at the end for a full-answer bonus.`;
       typeAnswerFeedbackEl.classList.remove('is-invisible', 'is-correct', 'is-incorrect', 'is-warning');
       typeAnswerFeedbackEl.classList.add('is-transcript');
     } else if (slotCfg?.slotType === 'spanish_options') {
-      typeAnswerFeedbackEl.textContent = `Open prompt — say the example above or any valid Spanish answer / combination for ${slotCfg.placeholder}.`;
+      typeAnswerFeedbackEl.textContent = `Only the base is required — add any valid Spanish extension for ${slotCfg.placeholder} for a bonus.`;
       typeAnswerFeedbackEl.classList.remove('is-invisible', 'is-correct', 'is-incorrect', 'is-warning');
       typeAnswerFeedbackEl.classList.add('is-transcript');
     }
@@ -1343,17 +1470,57 @@ function syncPracticeModeCardUI({ autoSpeak = false, preserveSlotChoice = false 
 }
 
 function updateSrsDueBadge() {
-  if (!hudSrsDueBadgeEl) return;
-  const dueCount =
-    state.activeCategory === 'numbers'
-      ? getDueSrsNumbers().length
-      : getDueSrsPhraseIds(state.activeCategory).length;
-  hudSrsDueBadgeEl.textContent = `${dueCount} due`;
-  hudSrsDueBadgeEl.classList.toggle('hidden', dueCount === 0);
+  // Due counter removed from HUD
+}
+
+function getRevisionDrillItems() {
+  const list = [];
+  CATEGORY_ORDER.forEach((catId) => {
+    if (!CATEGORIES[catId]) return;
+    if (catId === 'numbers') {
+      for (let n = 0; n <= 100; n += 1) {
+        const entry = state.counts?.[n];
+        const c = Math.max(0, Number(entry?.correct) || 0);
+        const inc = Math.max(0, Number(entry?.incorrect) || 0);
+        const total = c + inc;
+        if (total === 0) continue;
+        const pct = Math.round((c / total) * 100);
+        if (pct < 75) {
+          list.push({ catId, num: n, item: null, key: `numbers:${n}`, pct, incorrect: inc });
+        }
+      }
+    } else {
+      getItemsForCategory(catId).forEach((item) => {
+        const entry = state.phraseCounts?.[item.id];
+        const c = Math.max(0, Number(entry?.correct) || 0);
+        const inc = Math.max(0, Number(entry?.incorrect) || 0);
+        const total = c + inc;
+        if (total === 0) return;
+        const pct = Math.round((c / total) * 100);
+        if (pct < 75) {
+          list.push({ catId, num: null, item, key: `${catId}:${item.id}`, pct, incorrect: inc });
+        }
+      });
+    }
+  });
+  list.sort((a, b) => a.pct - b.pct || b.incorrect - a.incorrect);
+  return list;
 }
 
 function syncWeakDrillBannerUI() {
   if (!weakDrillBannerEl) return;
+  if (state.revisionDrillActive) {
+    const revList = getRevisionDrillItems();
+    if (revList.length === 0) {
+      state.revisionDrillActive = false;
+    } else {
+      weakDrillBannerEl.classList.remove('hidden');
+      if (weakDrillBannerTextEl) {
+        weakDrillBannerTextEl.textContent = `Revision Drill (<75%) · ${revList.length} word${revList.length === 1 ? '' : 's'} remaining`;
+      }
+      return;
+    }
+  }
   if (state.polishDrillActive) {
     const polishList = getPolishItemsForCategory(state.activeCategory);
     if (polishList.length === 0) {
@@ -1377,105 +1544,7 @@ function syncWeakDrillBannerUI() {
 }
 
 function syncSpeechPreferencesUI() {
-  if (scoringStrictnessSelectEl) {
-    scoringStrictnessSelectEl.value = String(state.scoringThreshold || 90);
-  }
-  if (ttsEngineSelectEl) {
-    ttsEngineSelectEl.value = state.ttsEngine === 'local' ? 'local' : 'browser';
-  }
-  if (handsFreeToggleBtn) {
-    const on = Boolean(state.handsFreeVad);
-    handsFreeToggleBtn.classList.toggle('active', on);
-    handsFreeToggleBtn.setAttribute('aria-pressed', String(on));
-    if (handsFreeStatusEl) handsFreeStatusEl.textContent = on ? 'On' : 'Off';
-  }
-  if (handsFreeSilenceSelectEl) {
-    handsFreeSilenceSelectEl.value = String(state.handsFreeSilenceMs || 1300);
-  }
-  if (handsFreeIncorrectSelectEl) {
-    handsFreeIncorrectSelectEl.value = String(state.handsFreeIncorrectPolicy || 'auto-retry');
-  }
-  if (handsFreeCooldownSelectEl) {
-    handsFreeCooldownSelectEl.value = String(state.handsFreeCooldownMs || 350);
-  }
-  if (handsFreeEarconsToggleBtn) {
-    const on = state.handsFreeEarcons !== false;
-    handsFreeEarconsToggleBtn.classList.toggle('active', on);
-    handsFreeEarconsToggleBtn.setAttribute('aria-pressed', String(on));
-    if (handsFreeEarconsStatusEl) handsFreeEarconsStatusEl.textContent = on ? 'On' : 'Off';
-  }
-  if (handsFreePauseStageToggleBtn) {
-    const on = Boolean(state.handsFreePauseOnStage);
-    handsFreePauseStageToggleBtn.classList.toggle('active', on);
-    handsFreePauseStageToggleBtn.setAttribute('aria-pressed', String(on));
-    if (handsFreePauseStageStatusEl) handsFreePauseStageStatusEl.textContent = on ? 'On' : 'Off';
-  }
   syncHandsFreeUI();
-  if (shadowingToggleBtn) {
-    const on = Boolean(state.shadowingMode);
-    shadowingToggleBtn.classList.toggle('active', on);
-    shadowingToggleBtn.setAttribute('aria-pressed', String(on));
-    if (shadowingStatusEl) shadowingStatusEl.textContent = on ? 'On' : 'Off';
-  }
-  const pttBtn = document.getElementById('push-to-talk-toggle');
-  const pttStatus = document.getElementById('push-to-talk-status');
-  if (pttBtn) {
-    const on = state.pushToTalk !== false;
-    pttBtn.classList.toggle('active', on);
-    pttBtn.setAttribute('aria-pressed', String(on));
-    if (pttStatus) pttStatus.textContent = on ? 'On' : 'Off';
-  }
-}
-
-function openSessionSummaryModal() {
-  const backdropEl = document.getElementById('session-summary-modal-backdrop');
-  const bodyEl = document.getElementById('session-summary-body');
-  if (!backdropEl || !bodyEl) return;
-
-  const s = state.sessionStats || {
-    startedAt: Date.now(),
-    answered: 0,
-    correct: 0,
-    pronunciationSum: 0,
-    pronunciationCount: 0,
-    improvedItems: []
-  };
-  const elapsedMin = Math.max(1, Math.round((Date.now() - (s.startedAt || Date.now())) / 60000));
-  const passPct = s.answered > 0 ? Math.round((s.correct / s.answered) * 100) : 0;
-  const avgPron =
-    s.pronunciationCount > 0 ? `${Math.round(s.pronunciationSum / s.pronunciationCount)}%` : '—';
-  const improvedHTML =
-    s.improvedItems.length > 0
-      ? `<p class="modal-desc" style="margin:0;"><strong>Improved this session:</strong> ${s.improvedItems.slice(0, 6).map(escapeHtmlText).join(', ')}</p>`
-      : '<p class="modal-desc" style="margin:0;">Keep speaking to clear struggling words and build pronunciation consistency.</p>';
-
-  bodyEl.innerHTML = `
-    <div class="session-summary-grid">
-      <div class="session-summary-stat">
-        <div class="session-summary-stat-val">${elapsedMin}m</div>
-        <div class="session-summary-stat-lbl">Session Duration</div>
-      </div>
-      <div class="session-summary-stat">
-        <div class="session-summary-stat-val">${s.answered}</div>
-        <div class="session-summary-stat-lbl">Questions Spoken</div>
-      </div>
-      <div class="session-summary-stat">
-        <div class="session-summary-stat-val">${passPct}%</div>
-        <div class="session-summary-stat-lbl">Pass Rate (${s.correct}/${s.answered})</div>
-      </div>
-      <div class="session-summary-stat">
-        <div class="session-summary-stat-val">${avgPron}</div>
-        <div class="session-summary-stat-lbl">Avg Pronunciation</div>
-      </div>
-    </div>
-    ${improvedHTML}
-  `;
-  backdropEl.classList.remove('hidden');
-}
-
-function closeSessionSummaryModal() {
-  const backdropEl = document.getElementById('session-summary-modal-backdrop');
-  if (backdropEl) backdropEl.classList.add('hidden');
 }
 
 let currentIncorrectDisplayText = '';
@@ -1490,12 +1559,16 @@ function renderIncorrectSpanishWords(text, activeWordIdx = -1) {
     if (hintEl) hintEl.classList.add('hidden');
     return;
   }
+  const split = getActiveQuestionSplit();
+  const useSplitClasses = Boolean(split?.hasExtension && Array.isArray(split.baseWordIndices) && split.baseWordIndices.length > 0);
+  const baseIdxSet = useSplitClasses ? new Set(split.baseWordIndices.map(Number)) : null;
+  const extIdxSet = useSplitClasses ? new Set((split.extensionWordIndices || []).map(Number)) : null;
   let spanishWordCounter = 0;
   let html = '';
   tokens.forEach((tok, tokIdx) => {
     const prefix = tokIdx > 0 && tok.type !== 'punct' ? ' ' : '';
     if (tok.type === 'slot') {
-      html += `${prefix}<span class="slot-placeholder-chip" title="Say your own answer here">${escapeHtmlText(tok.text)}</span>`;
+      html += `${prefix}<span class="slot-placeholder-chip" title="Optional extension">${escapeHtmlText(tok.text)}</span>`;
       return;
     }
     if (tok.type === 'punct') {
@@ -1505,7 +1578,10 @@ function renderIncorrectSpanishWords(text, activeWordIdx = -1) {
     const idx = spanishWordCounter;
     spanishWordCounter += 1;
     const activeCls = idx === activeWordIdx ? ' practice-word-active' : '';
-    html += `${prefix}<button type="button" class="practice-word-btn incorrect-word-btn${activeCls}" data-incorrect-word="${escapeHtmlText(tok.spoken)}" title="Click to hear &quot;${escapeHtmlText(tok.spoken)}&quot;">${escapeHtmlText(tok.text)}</button>`;
+    const roleCls = useSplitClasses
+      ? (extIdxSet?.has(idx) ? ' is-ext-word' : baseIdxSet?.has(idx) ? ' is-base-word' : '')
+      : '';
+    html += `${prefix}<button type="button" class="practice-word-btn incorrect-word-btn${roleCls}${activeCls}" data-incorrect-word="${escapeHtmlText(tok.spoken)}" title="Click to hear &quot;${escapeHtmlText(tok.spoken)}&quot;">${escapeHtmlText(tok.text)}</button>`;
   });
   answerEl.innerHTML = html;
   if (hintEl) {
@@ -1568,15 +1644,8 @@ function showIncorrectScreen(details = {}) {
     }
   }
   if (incorrectScreenMemoryTipEl) {
-    const missCount = getCurrentItemIncorrectCount();
-    const tipText = getMemoryTipForCurrentQuestion();
-    if (!hardExam && missCount >= 3 && tipText) {
-      incorrectScreenMemoryTipEl.innerHTML = renderMemoryTipHTML(tipText, missCount);
-      incorrectScreenMemoryTipEl.classList.remove('hidden');
-    } else {
-      incorrectScreenMemoryTipEl.innerHTML = '';
-      incorrectScreenMemoryTipEl.classList.add('hidden');
-    }
+    incorrectScreenMemoryTipEl.innerHTML = '';
+    incorrectScreenMemoryTipEl.classList.add('hidden');
   }
   if (phonemesEl) {
     const charDetails = Array.isArray(details.charDetails) ? details.charDetails : [];
@@ -1644,6 +1713,43 @@ function loadQuestion() {
   stopAllSpanishSpeech();
   hideIncorrectScreen();
   hideHandsFreeInlineIntro();
+
+  state.sessionQuestionSeq = (Number(state.sessionQuestionSeq) || 0) + 1;
+  state.currentQuestionSkipRecorded = false;
+  const avoidSkipKey = state.lastSkippedBaseKey || '';
+  const avoidSkipExpectedEs = state.lastSkippedExpectedEs || '';
+  state.lastSkippedBaseKey = '';
+  state.lastSkippedExpectedEs = '';
+
+  const matchesJustSkipped = (key, esText) => {
+    if (avoidSkipKey && key === avoidSkipKey) return true;
+    if (avoidSkipExpectedEs && esText && normalizeSkipExpectedEs(esText) === avoidSkipExpectedEs) return true;
+    return false;
+  };
+
+  let revisionTarget = null;
+  if (state.revisionDrillActive) {
+    const revList = getRevisionDrillItems();
+    if (revList.length === 0) {
+      state.revisionDrillActive = false;
+      syncWeakDrillBannerUI();
+    } else {
+      const prevKey =
+        state.activeCategory === 'numbers'
+          ? `numbers:${state.currentNum}`
+          : `${state.activeCategory}:${state.currentItem?.id || ''}`;
+      const nonCooldownRev = revList.filter((r) => !isItemOnSkipCooldown(r.key));
+      const baseRevPool = nonCooldownRev.length > 0 ? nonCooldownRev : revList;
+      const nonSkippedRev = baseRevPool.filter((r) => !matchesJustSkipped(r.key, r.item ? r.item.es : getSpanishNumber(r.num)));
+      const usableRev = nonSkippedRev.length > 0 ? nonSkippedRev : baseRevPool;
+      const candidates = usableRev.length > 1 ? usableRev.filter((r) => r.key !== prevKey) : usableRev;
+      revisionTarget = candidates[Math.floor(Math.random() * candidates.length)] || usableRev[0];
+      if (revisionTarget && revisionTarget.catId) {
+        state.activeCategory = revisionTarget.catId;
+      }
+    }
+  }
+
   if (!isCategoryUnlocked(state.activeCategory)) return;
 
   const snap = getProgressionSnapshot(state.activeCategory);
@@ -1659,6 +1765,7 @@ function loadQuestion() {
   state.usedShow = false;
 
   resetQuestionVoiceCapture();
+  clearFullAnswerVisualReward();
   voiceCaptureState.speakCloseAttemptCount = 0;
   syncQuestionTypeUI();
   syncDirectionUI();
@@ -1681,11 +1788,17 @@ function loadQuestion() {
   const isDictation = state.activeCategory === 'numbers' && state.questionType === 'dictation';
 
   if (state.activeCategory !== 'numbers') {
-    const pool = getPoolForPhraseCategory(state.activeCategory, state.range);
-    if (pool.length === 0) return;
+    const rawPool = getPoolForPhraseCategory(state.activeCategory, state.range);
+    if (rawPool.length === 0) return;
+    const nonCooldownPool = rawPool.filter((it) => !isItemOnSkipCooldown(`${state.activeCategory}:${it.id}`));
+    const cdPool = nonCooldownPool.length > 0 ? nonCooldownPool : rawPool;
+    const nonJustSkippedPool = cdPool.filter((it) => !matchesJustSkipped(`${state.activeCategory}:${it.id}`, it.es));
+    const pool = nonJustSkippedPool.length > 0 ? nonJustSkippedPool : cdPool;
 
     let nextItem = null;
-    if (state.practiceMode && !state.weakDrillActive && !state.polishDrillActive) {
+    if (revisionTarget && revisionTarget.item) {
+      nextItem = revisionTarget.item;
+    } else if (state.practiceMode && !state.weakDrillActive && !state.polishDrillActive) {
       const prog = getPracticeStageProgress(state.activeCategory);
       const seq = prog.sequence.length > 0 ? prog.sequence : pool;
       if (state.practiceQueueStageKey !== prog.stageKey) {
@@ -1743,11 +1856,11 @@ function loadQuestion() {
       audioControlsRowEl.classList.add('hidden');
       promptValueEl.classList.remove('hidden');
       if (isSpeakQuestion) {
-        promptValueEl.textContent = activeData.en;
+        renderPromptValueWithSplit(activeData.en, { allowSplit: true });
         promptValueEl.classList.remove('is-spanish');
         if (promptSubtextEl) promptSubtextEl.classList.add('hidden');
       } else {
-        promptValueEl.textContent = isNumToEs ? activeData.en : activeData.es;
+        renderPromptValueWithSplit(isNumToEs ? activeData.en : activeData.es, { allowSplit: isNumToEs });
         promptValueEl.classList.toggle('is-spanish', !isNumToEs);
         if (promptSubtextEl) promptSubtextEl.classList.add('hidden');
       }
@@ -1768,9 +1881,15 @@ function loadQuestion() {
 
   state.currentItem = null;
   state.currentInstance = null;
-  const pool = getPoolForRange(state.range);
+  const rawNumPool = getPoolForRange(state.range);
+  const nonCooldownNumPool = rawNumPool.filter((n) => !isItemOnSkipCooldown(`numbers:${n}`));
+  const cdNumPool = nonCooldownNumPool.length > 0 ? nonCooldownNumPool : rawNumPool;
+  const nonJustSkippedNumPool = cdNumPool.filter((n) => !matchesJustSkipped(`numbers:${n}`, getSpanishNumber(n)));
+  const pool = nonJustSkippedNumPool.length > 0 ? nonJustSkippedNumPool : cdNumPool;
   let nextNum = 0;
-  if (state.practiceMode && !state.weakDrillActive && !state.polishDrillActive) {
+  if (revisionTarget && typeof revisionTarget.num === 'number') {
+    nextNum = revisionTarget.num;
+  } else if (state.practiceMode && !state.weakDrillActive && !state.polishDrillActive) {
     const prog = getPracticeStageProgress('numbers');
     const seq = prog.sequence.length > 0 ? prog.sequence : pool;
     if (state.practiceQueueStageKey !== prog.stageKey) {
@@ -1830,12 +1949,12 @@ function loadQuestion() {
     audioControlsRowEl.classList.add('hidden');
     promptValueEl.classList.remove('hidden');
     if (isSpeakQuestion) {
-      promptValueEl.textContent = state.currentContext.promptEn;
+      renderPromptValueWithSplit(state.currentContext.promptEn, { allowSplit: true });
       promptValueEl.classList.remove('is-spanish');
       if (promptSubtextEl) promptSubtextEl.classList.add('hidden');
     } else {
       const promptText = isNumToEs ? state.currentContext.promptEn : state.currentContext.promptEs;
-      promptValueEl.textContent = promptText;
+      renderPromptValueWithSplit(promptText, { allowSplit: isNumToEs });
       promptValueEl.classList.toggle('is-spanish', !isNumToEs);
       if (promptSubtextEl) promptSubtextEl.classList.add('hidden');
     }
@@ -2177,26 +2296,37 @@ function evaluateTypedAnswer({ voiceAlternatives = null } = {}) {
   const displayAns = getCorrectAnswerDisplay();
   const spokenEs = getSpokenTextForCurrentQuestion();
 
-  // Base-only rating for Browser STT in Speak mode: if prompt has an extension, rate ONLY the base
-  // for pass/fail and track the extension separately in extensionCounts!
+  // Base-only rating for Browser STT in Speak mode: only require the base for pass/fail!
+  // If the user ALSO includes the extension, track it in the mastery table and grant the full-answer visual reward.
   let browserExtensionRating = null;
+  let browserExtensionIncluded = false;
+  let browserFullAnswerBonus = false;
+  let browserBonusExtLabel = '';
   const activeSplit = state.questionType === 'speak' ? getActiveQuestionSplit() : { hasExtension: false };
-  if (state.questionType === 'speak' && !state.practiceMode && activeSplit.hasExtension) {
+  if (state.questionType === 'speak' && activeSplit.hasExtension) {
     const normCandStr = (s) => stripAccents(normalizePhraseSpanish(s || ''));
     const baseCands = [activeSplit.baseEs, ...(activeSplit.baseAltEs || [])]
       .map(normCandStr)
       .filter(Boolean);
-    const extNorm = normCandStr(activeSplit.extensionEs);
+    const isAnySlotExt = activeSplit.extensionEs === '__slot_any__';
+    const extNorm = isAnySlotExt ? '' : normCandStr(activeSplit.extensionEs);
     let baseMatched = Boolean(isCorrect);
     let extMatched = false;
+    let extAttemptedWrong = false;
     let resolvedSpokenExt = null;
+    const activeSlotTemplate = state.activeCategory !== 'numbers' ? resolveActivePhraseItem()?.slotTemplate : null;
 
     for (const cand of candidateList) {
       const cNorm = normCandStr(cand);
       if (!cNorm) continue;
       const padded = ` ${cNorm} `;
-      if (!baseMatched && baseCands.some((bc) => cNorm === bc || padded.includes(` ${bc} `))) {
+      const matchedBase = baseCands.find((bc) => cNorm === bc || padded.includes(` ${bc} `));
+      if (!baseMatched && matchedBase) {
         baseMatched = true;
+      }
+      if (activeSlotTemplate && matchesSlotTemplateSpanish(cand, activeSlotTemplate)) {
+        baseMatched = true;
+        extMatched = true;
       }
       const spokenExt = resolveSpokenExtensionInfo(cand, '');
       if (spokenExt) {
@@ -2204,19 +2334,38 @@ function evaluateTypedAnswer({ voiceAlternatives = null } = {}) {
         resolvedSpokenExt = spokenExt;
       } else if (extNorm && (cNorm === extNorm || padded.includes(` ${extNorm} `))) {
         extMatched = true;
+      } else if (matchedBase && !isAnySlotExt) {
+        const leftover = cNorm.replace(matchedBase, ' ').replace(/\s+/g, ' ').trim();
+        if (leftover.length > 0) {
+          extAttemptedWrong = true;
+        }
       }
     }
     isCorrect = baseMatched;
-    browserExtensionRating = {
-      key: resolvedSpokenExt?.key || activeSplit.extensionKey,
-      catId: resolvedSpokenExt?.catId || activeSplit.catId,
-      es: resolvedSpokenExt?.es || activeSplit.extensionLabelEs || activeSplit.extensionEs,
-      en: resolvedSpokenExt?.en || activeSplit.extensionLabelEn || activeSplit.extensionEn,
-      group: resolvedSpokenExt?.group || activeSplit.extensionGroup || '',
-      isCorrect: Boolean(extMatched),
-      score: null,
-      needsImprovement: false
-    };
+    browserExtensionIncluded = Boolean(extMatched);
+    browserFullAnswerBonus = Boolean(baseMatched && extMatched);
+    browserBonusExtLabel =
+      resolvedSpokenExt?.es ||
+      (isAnySlotExt ? '' : (activeSplit.extensionLabelEs || activeSplit.extensionEs));
+
+    // Track extension in Mastery Table whenever the user included it OR attempted an incorrect variant after the base
+    const shouldTrackExt = Boolean(
+      !state.practiceMode &&
+      activeSplit.trackExtensionInMastery !== false &&
+      (browserExtensionIncluded || (baseMatched && extAttemptedWrong && activeSplit.extensionKey))
+    );
+    if (shouldTrackExt) {
+      browserExtensionRating = {
+        key: resolvedSpokenExt?.key || activeSplit.extensionKey,
+        catId: resolvedSpokenExt?.catId || activeSplit.catId,
+        es: resolvedSpokenExt?.es || activeSplit.extensionLabelEs || activeSplit.extensionEs,
+        en: resolvedSpokenExt?.en || activeSplit.extensionLabelEn || activeSplit.extensionEn,
+        group: resolvedSpokenExt?.group || activeSplit.extensionGroup || '',
+        isCorrect: Boolean(extMatched),
+        score: null,
+        needsImprovement: false
+      };
+    }
   }
 
   if (state.questionType === 'speak') {
@@ -2276,6 +2425,7 @@ function evaluateTypedAnswer({ voiceAlternatives = null } = {}) {
 
   // Keep Practice Mode strictly ungraded when using Browser Speech-to-Text
   if (state.practiceMode) {
+    const matchedCandidateText = answerInputEl.value.trim() || raw.trim();
     state.answered = false;
     answerInputEl.disabled = false;
     answerInputEl.value = '';
@@ -2295,12 +2445,25 @@ function evaluateTypedAnswer({ voiceAlternatives = null } = {}) {
     if (voiceRedoBtn) voiceRedoBtn.disabled = true;
     syncNextQuestionButtonUI();
 
-    if (isCorrect) {
-      playCorrectSound();
+    if (isCorrect && browserFullAnswerBonus) {
+      triggerFullAnswerVisualReward({
+        extensionEs: browserBonusExtLabel,
+        extensionScore: null,
+        trackedInMastery: false,
+        isPractice: true
+      });
       if (state.activeCategory !== 'numbers') {
         markSlotOptionsUsedForItem(resolveActivePhraseItem(), {
           heard: raw.trim(),
-          scoredTargetEs: answerInputEl.value.trim() || raw.trim()
+          scoredTargetEs: matchedCandidateText
+        });
+      }
+    } else if (isCorrect) {
+      playCorrectSound();
+      if (state.activeCategory !== 'numbers' && browserExtensionIncluded) {
+        markSlotOptionsUsedForItem(resolveActivePhraseItem(), {
+          heard: raw.trim(),
+          scoredTargetEs: matchedCandidateText
         });
       }
     } else {
@@ -2313,8 +2476,11 @@ function evaluateTypedAnswer({ voiceAlternatives = null } = {}) {
     if (typeAnswerFeedbackEl) {
       const heardBit = raw.trim() ? `Heard "${raw.trim()}"` : 'Spoken';
       typeAnswerFeedbackEl.classList.remove('is-invisible', 'is-correct', 'is-incorrect', 'is-warning', 'is-transcript');
-      if (isCorrect) {
-        typeAnswerFeedbackEl.textContent = `Practice · ${heardBit} — Great! Speak again or click Next Word →`;
+      if (isCorrect && browserFullAnswerBonus) {
+        typeAnswerFeedbackEl.textContent = `★ Practice · Correct! · Full Answer Bonus (${heardBit}) — Click Next Word →`;
+        typeAnswerFeedbackEl.classList.add('is-correct', 'is-full-answer-bonus');
+      } else if (isCorrect) {
+        typeAnswerFeedbackEl.textContent = `Practice · Correct! (${heardBit}) — Speak again or click Next Word →`;
         typeAnswerFeedbackEl.classList.add('is-correct');
       } else {
         typeAnswerFeedbackEl.textContent = `Practice · ${heardBit} — Listen & try again or click Next Word →`;
@@ -2341,9 +2507,10 @@ function evaluateTypedAnswer({ voiceAlternatives = null } = {}) {
     voiceCaptureState.attemptCount += 1;
     updateMemoryTipUI();
     syncSlotOptionsDropdownUI();
-    voiceCaptureState.lastFailedMeta = browserExtensionRating
-      ? { extensionRating: browserExtensionRating }
-      : {};
+    voiceCaptureState.lastFailedMeta = {
+      extensionIncluded: Boolean(browserExtensionIncluded),
+      ...(browserExtensionRating ? { extensionRating: browserExtensionRating } : {})
+    };
     voiceCaptureState.hasSpokenAudio = false;
     voiceCaptureState.questionAlternatives = [];
     answerInputEl.value = '';
@@ -2369,10 +2536,10 @@ function evaluateTypedAnswer({ voiceAlternatives = null } = {}) {
         voiceCaptureState.pendingIncorrectCommit = true;
       } else {
         voiceCaptureState.pendingIncorrectCommit = false;
-        recordGradedOutcome(
-          false,
-          browserExtensionRating ? { extensionRating: browserExtensionRating } : {}
-        );
+        recordGradedOutcome(false, {
+          extensionIncluded: Boolean(browserExtensionIncluded),
+          ...(browserExtensionRating ? { extensionRating: browserExtensionRating } : {})
+        });
       }
       logSpeechEvent(
         'COMMIT',
@@ -2469,12 +2636,14 @@ function evaluateTypedAnswer({ voiceAlternatives = null } = {}) {
     strictClean,
     heard: raw.trim(),
     scoredTargetEs: answerInputEl.value.trim() || raw.trim(),
+    extensionIncluded: Boolean(browserExtensionIncluded),
+    fullAnswerBonus: Boolean(browserFullAnswerBonus),
     ...(browserExtensionRating ? { extensionRating: browserExtensionRating } : {})
   });
   if (state.questionType === 'speak') {
     logSpeechEvent(
       'COMMIT',
-      `Browser STT verdict: ${isCorrect ? 'PASS' : 'FAIL'} · raw="${raw.trim()}"`,
+      `Browser STT verdict: ${isCorrect ? (browserFullAnswerBonus ? 'PASS (FULL ANSWER BONUS)' : 'PASS') : 'FAIL'} · raw="${raw.trim()}"`,
       {
         engine: 'browser',
         isCorrect,
@@ -2483,19 +2652,38 @@ function evaluateTypedAnswer({ voiceAlternatives = null } = {}) {
         voiceAlternatives,
         expectedDisplay: displayAns,
         spokenEs,
-        strictClean
+        strictClean,
+        extensionIncluded: Boolean(browserExtensionIncluded),
+        fullAnswerBonus: Boolean(browserFullAnswerBonus)
       },
       isCorrect ? 'info' : 'warn'
     );
   }
-  if (isCorrect) {
+  if (isCorrect && browserFullAnswerBonus) {
+    triggerFullAnswerVisualReward({
+      extensionEs: browserBonusExtLabel,
+      extensionScore: null,
+      trackedInMastery: Boolean(browserExtensionRating),
+      isPractice: false
+    });
+  } else if (isCorrect) {
     playCorrectSound();
   } else {
     playIncorrectSound();
   }
   inputShellEl.classList.add(isCorrect ? 'correct' : 'incorrect');
+  if (isCorrect && browserFullAnswerBonus) {
+    inputShellEl.classList.add('is-full-answer-bonus');
+  }
   if (state.questionType === 'speak') {
-    typeAnswerFeedbackEl.textContent = isCorrect ? 'Correct' : 'Incorrect';
+    if (isCorrect && browserFullAnswerBonus) {
+      const extTag = browserBonusExtLabel ? ` (+ "${browserBonusExtLabel}")` : '';
+      typeAnswerFeedbackEl.textContent = `★ Correct! · Full Answer Bonus${extTag}`;
+    } else if (isCorrect && activeSplit.hasExtension) {
+      typeAnswerFeedbackEl.textContent = 'Correct! · Base answered';
+    } else {
+      typeAnswerFeedbackEl.textContent = isCorrect ? 'Correct' : 'Incorrect';
+    }
   } else {
     typeAnswerFeedbackEl.textContent = accentWarning
       ? `${displayAns} (watch tilde)`
@@ -2505,6 +2693,9 @@ function evaluateTypedAnswer({ voiceAlternatives = null } = {}) {
   typeAnswerFeedbackEl.classList.add(
     isCorrect ? (accentWarning ? 'is-warning' : 'is-correct') : 'is-incorrect'
   );
+  if (isCorrect && browserFullAnswerBonus) {
+    typeAnswerFeedbackEl.classList.add('is-full-answer-bonus');
+  }
   if (state.questionType !== 'speak' || !isCorrect) {
     speakSpanish(spokenEs);
   }
@@ -2518,8 +2709,18 @@ function advancePracticeNextWord() {
     stopActiveVoiceCapture();
   }
   markStudyActivity();
-  markCurrentPracticeItemCompleted();
+  const practiceRes = markCurrentPracticeItemCompleted();
   evaluateAllAchievements({ recordActivity: true });
+  const progAfter = getPracticeStageProgress(state.activeCategory);
+  if (practiceRes?.justCompleted || (!isTrackingDisabled() && progAfter.isComplete)) {
+    state.practiceMode = false;
+    hideIncorrectScreen();
+    state.answered = false;
+    resetExamQuantityScenarioPool();
+    syncPracticeModeCardUI({ autoSpeak: false });
+    advanceQuestion();
+    return;
+  }
   state.practiceQueueIndex += 1;
   advanceQuestion();
 }
@@ -2552,7 +2753,17 @@ function skipCurrentQuestion() {
   if (skipQuestionBtn) skipQuestionBtn.disabled = true;
   syncNextQuestionButtonUI();
 
-  recordOutcome(false, { skipped: true });
+  const skipKey = getSkipCooldownKeyForCurrentQuestion();
+  state.lastSkippedBaseKey = skipKey;
+  state.lastSkippedExpectedEs = normalizeSkipExpectedEs(spokenEs || displayAns);
+  // Deduplicate multiple skips within the same question attempt (including retry round)
+  if (!state.currentQuestionSkipRecorded) {
+    state.currentQuestionSkipRecorded = true;
+    voiceCaptureState.pendingIncorrectCommit = false;
+    recordOutcome(false, { skipped: true });
+    recordSkipForCooldown(skipKey);
+    savePersistedData();
+  }
   updateMemoryTipUI();
   logSpeechEvent(
     'COMMIT',
@@ -2593,7 +2804,7 @@ function showCorrectAnswer() {
   if (micBtn) micBtn.disabled = true;
   if (voiceRedoBtn) voiceRedoBtn.disabled = true;
 
-  recordOutcome(false, failedMeta);
+  recordGradedOutcome(false, failedMeta);
   advanceQuestion();
 }
 
@@ -2679,25 +2890,17 @@ function syncDirectionUI() {
 function syncSpeakOnlyModeUI() {
   state.speakOnlyMode = true;
   document.body.classList.add('is-speak-only');
-  const skillAreaEl = document.getElementById('stage-skill-area');
-  if (skillAreaEl) {
-    skillAreaEl.setAttribute('aria-label', 'Speak Stage Progress');
-  }
 }
 
 function syncModeVisuals() {
   const isPlayView = state.activeView === 'play';
-  const isPathView = state.activeView === 'path';
   const isStatsView = state.activeView === 'stats';
 
   navPlayBtn.classList.toggle('active', isPlayView);
   navPlayBtn.setAttribute('aria-pressed', String(isPlayView));
-  if (navPathBtn) {
-    navPathBtn.classList.toggle('active', isPathView);
-    navPathBtn.setAttribute('aria-pressed', String(isPathView));
-  }
   navStatsBtn.classList.toggle('active', isStatsView);
   navStatsBtn.setAttribute('aria-pressed', String(isStatsView));
+  renderCategoryNav();
 }
 
 const VIEW_PANE_MAP = {
@@ -2751,7 +2954,7 @@ function switchView(targetView) {
     incomingEl.classList.add('is-visible');
 
     if (targetView === 'stats') {
-      switchStatsSubView('calendar');
+      switchStatsSubView('calendar', { immediate: true });
     } else if (targetView === 'path') {
       renderPathView();
     } else {
@@ -2772,7 +2975,7 @@ function switchView(targetView) {
         }
       }
     }
-  }, 240);
+  }, 180);
 }
 
 function switchCategory(catId) {
@@ -2855,6 +3058,7 @@ function wireAppEventListeners() {
       closeSettingsPopover();
     }
     closeCategoryDropdown();
+    closeUnitCogMenu();
     if (statsCalendarState.pickerOpen) {
       statsCalendarState.pickerOpen = false;
       renderStatsCalendar();
@@ -2906,149 +3110,13 @@ function wireAppEventListeners() {
       syncModeVisuals();
     }
   });
-  if (navPathBtn) {
-    navPathBtn.addEventListener('click', () => switchView('path'));
-  }
   navStatsBtn.addEventListener('click', () => switchView('stats'));
 
-  themeToggleBtn.addEventListener('click', () => {
-    state.theme = state.theme === 'dark' ? 'light' : 'dark';
-    applyTheme();
-    savePersistedData();
-  });
-
-  if (blurLockedToggleBtn) {
-    blurLockedToggleBtn.addEventListener('click', () => {
-      state.blurLockedContent = state.blurLockedContent === false;
-      applyBlurLocked();
-      renderCategoryNav();
-      renderPathView();
-      savePersistedData();
+  if (trackingToggleBtn) {
+    trackingToggleBtn.addEventListener('click', () => {
+      toggleTrackingDisabled();
     });
   }
-
-  if (scoringStrictnessSelectEl) {
-    scoringStrictnessSelectEl.addEventListener('change', (e) => {
-      const val = Number(e.target.value);
-      state.scoringThreshold = [70, 80, 90].includes(val) ? val : 90;
-      syncSpeechPreferencesUI();
-      savePersistedData();
-    });
-  }
-
-  if (ttsEngineSelectEl) {
-    ttsEngineSelectEl.addEventListener('change', (e) => {
-      state.ttsEngine = e.target.value === 'local' ? 'local' : 'browser';
-      syncSpeechPreferencesUI();
-      savePersistedData();
-    });
-  }
-
-  if (handsFreeToggleBtn) {
-    handsFreeToggleBtn.addEventListener('click', () => {
-      state.handsFreeVad = !state.handsFreeVad;
-      syncSpeechPreferencesUI();
-      savePersistedData();
-    });
-  }
-
-  if (handsFreeSilenceSelectEl) {
-    handsFreeSilenceSelectEl.addEventListener('change', (e) => {
-      const val = Number(e.target.value);
-      state.handsFreeSilenceMs = [900, 1300, 1800, 2400].includes(val) ? val : 1300;
-      syncSpeechPreferencesUI();
-      savePersistedData();
-    });
-  }
-
-  if (handsFreeIncorrectSelectEl) {
-    handsFreeIncorrectSelectEl.addEventListener('change', (e) => {
-      const val = String(e.target.value || '');
-      state.handsFreeIncorrectPolicy = ['auto-retry', 'voice-choice', 'auto-continue'].includes(val)
-        ? val
-        : 'auto-retry';
-      syncSpeechPreferencesUI();
-      savePersistedData();
-    });
-  }
-
-  if (handsFreeCooldownSelectEl) {
-    handsFreeCooldownSelectEl.addEventListener('change', (e) => {
-      const val = Number(e.target.value);
-      state.handsFreeCooldownMs = [250, 350, 550].includes(val) ? val : 350;
-      syncSpeechPreferencesUI();
-      savePersistedData();
-    });
-  }
-
-  if (handsFreeEarconsToggleBtn) {
-    handsFreeEarconsToggleBtn.addEventListener('click', () => {
-      state.handsFreeEarcons = state.handsFreeEarcons === false;
-      syncSpeechPreferencesUI();
-      savePersistedData();
-    });
-  }
-
-  if (handsFreePauseStageToggleBtn) {
-    handsFreePauseStageToggleBtn.addEventListener('click', () => {
-      state.handsFreePauseOnStage = !state.handsFreePauseOnStage;
-      syncSpeechPreferencesUI();
-      savePersistedData();
-    });
-  }
-
-  if (shadowingToggleBtn) {
-    shadowingToggleBtn.addEventListener('click', () => {
-      state.shadowingMode = !state.shadowingMode;
-      syncSpeechPreferencesUI();
-      savePersistedData();
-    });
-  }
-
-  const pushToTalkBtn = document.getElementById('push-to-talk-toggle');
-  if (pushToTalkBtn) {
-    pushToTalkBtn.addEventListener('click', () => {
-      state.pushToTalk = !(state.pushToTalk !== false);
-      syncSpeechPreferencesUI();
-      savePersistedData();
-    });
-  }
-
-  document.getElementById('practice-mode-btn')?.addEventListener('click', () => {
-    if (isTopicExamActive()) {
-      state.practiceMode = false;
-      syncPracticeModeCardUI({ autoSpeak: false });
-      if (typeAnswerFeedbackEl) {
-        typeAnswerFeedbackEl.textContent =
-          'Practice Mode is locked during the Hard Topic Exam (30 questions · 90% required).';
-        typeAnswerFeedbackEl.classList.remove('is-invisible', 'is-correct', 'is-incorrect', 'is-transcript');
-        typeAnswerFeedbackEl.classList.add('is-warning');
-      }
-      return;
-    }
-    const prog = getPracticeStageProgress(state.activeCategory);
-    if (!prog.isComplete) {
-      state.practiceMode = true;
-      syncPracticeModeCardUI({ autoSpeak: false });
-      if (typeAnswerFeedbackEl) {
-        typeAnswerFeedbackEl.textContent = `Complete Practice Mode (${prog.doneCount}/${prog.totalCount}) before starting the Graded Test.`;
-        typeAnswerFeedbackEl.classList.remove('is-invisible', 'is-correct', 'is-incorrect', 'is-transcript');
-        typeAnswerFeedbackEl.classList.add('is-warning');
-      }
-      return;
-    }
-    state.practiceMode = !state.practiceMode;
-    hideIncorrectScreen();
-    state.answered = false;
-    if (state.practiceMode) {
-      state.practiceQueueStageKey = '';
-      syncPracticeModeCardUI({ autoSpeak: true });
-    } else {
-      resetExamQuantityScenarioPool();
-      syncPracticeModeCardUI({ autoSpeak: false });
-      loadQuestion();
-    }
-  });
 
   document.getElementById('practice-hear-btn')?.addEventListener('click', () => {
     handleHandsFreeManualInteraction('manual-interaction');
@@ -3100,7 +3168,7 @@ function wireAppEventListeners() {
         excludedScenarioIds: isExam ? Array.from(usedSet) : []
       });
       if (promptValueEl && state.questionType === 'speak') {
-        promptValueEl.textContent = state.currentContext.promptEn;
+        renderPromptValueWithSplit(state.currentContext.promptEn, { allowSplit: true });
       }
       if (state.practiceMode) {
         renderPracticeSpanishWords(getDisplaySpanishForCurrentQuestion());
@@ -3168,22 +3236,84 @@ function wireAppEventListeners() {
     weakDrillExitBtn.addEventListener('click', () => {
       state.weakDrillActive = false;
       state.polishDrillActive = false;
+      state.revisionDrillActive = false;
       syncWeakDrillBannerUI();
       loadQuestion();
     });
   }
 
-  if (sessionSummaryBtn) {
-    sessionSummaryBtn.addEventListener('click', openSessionSummaryModal);
+  // Progress Export / Import JSON inside Settings -> Developer Tools
+  const exportProgressBtn = document.getElementById('export-progress-btn');
+  const importProgressBtn = document.getElementById('import-progress-btn');
+  const importProgressFileInput = document.getElementById('import-progress-file-input');
+  const progressBackupStatusEl = document.getElementById('progress-backup-status');
+
+  const setBackupStatus = (msg, isError = false) => {
+    if (!progressBackupStatusEl) return;
+    progressBackupStatusEl.textContent = msg;
+    progressBackupStatusEl.style.color = isError ? 'var(--danger)' : 'var(--success)';
+  };
+
+  if (exportProgressBtn) {
+    exportProgressBtn.addEventListener('click', () => {
+      try {
+        const payload = buildProgressExportPayload();
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `panamanian-spanish-progress-${getLocalDateKey()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        setBackupStatus('Progress exported.');
+      } catch {
+        setBackupStatus('Export failed.', true);
+      }
+    });
   }
-  const summaryCloseX = document.getElementById('session-summary-close-x');
-  const summaryCloseBtn = document.getElementById('session-summary-close-btn');
-  const summaryBackdrop = document.getElementById('session-summary-modal-backdrop');
-  if (summaryCloseX) summaryCloseX.addEventListener('click', closeSessionSummaryModal);
-  if (summaryCloseBtn) summaryCloseBtn.addEventListener('click', closeSessionSummaryModal);
-  if (summaryBackdrop) {
-    summaryBackdrop.addEventListener('click', (e) => {
-      if (e.target === summaryBackdrop) closeSessionSummaryModal();
+
+  if (importProgressBtn && importProgressFileInput) {
+    importProgressBtn.addEventListener('click', () => {
+      importProgressFileInput.value = '';
+      importProgressFileInput.click();
+    });
+    importProgressFileInput.addEventListener('change', async () => {
+      const file = importProgressFileInput.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        const res = importProgressPayload(parsed);
+        if (!res.ok) {
+          setBackupStatus(res.error || 'Invalid backup file.', true);
+          return;
+        }
+        state.weakDrillActive = false;
+        state.polishDrillActive = false;
+        state.revisionDrillActive = false;
+        if (!isCategoryUnlocked(state.activeCategory)) {
+          state.activeCategory = getHighestUnlockedCategoryId();
+        }
+        state.reviewFilterCat = state.activeCategory;
+        if (speedSelectEl) speedSelectEl.value = String(state.speed);
+        syncPanamaSettingsUI();
+        syncSpeechPreferencesUI();
+        syncWeakDrillBannerUI();
+        updateDailyGoalUI();
+        renderCategoryNav();
+        renderPlayCategoryState();
+        syncProgressionUI();
+        renderPathView();
+        renderStatsCalendar();
+        if (state.activeView === 'play') {
+          loadQuestion();
+        }
+        setBackupStatus(`Imported (${res.totalAnswered} answers).`);
+      } catch {
+        setBackupStatus('Could not read JSON file.', true);
+      }
     });
   }
 
@@ -3191,8 +3321,6 @@ function wireAppEventListeners() {
     const overlayIds = [
       'topic-educate-modal-backdrop',
       'speech-error-modal-backdrop',
-      'session-summary-modal-backdrop',
-      'testing-suite-modal-backdrop',
       'reintroduce-skill-modal-backdrop',
       'skip-stage-modal-backdrop',
       'stage-complete-award-modal-backdrop',
@@ -3201,15 +3329,9 @@ function wireAppEventListeners() {
       'browser-warning-modal-backdrop',
       'subject-complete-modal-backdrop',
       'muted-audio-modal-backdrop',
-      'wipe-topic-confirm-modal-backdrop',
-      'wipe-confirm-modal-backdrop',
       'word-intro-modal-backdrop',
       'stage-seen-modal-backdrop',
-      'move-date-modal-backdrop',
-      'data-mgmt-modal-backdrop',
-      'delete-modal-backdrop',
       'settings-popover',
-      'category-dropdown-popover',
       'incorrect-screen-panel'
     ];
     return overlayIds.some((id) => {
@@ -3257,22 +3379,16 @@ function wireAppEventListeners() {
 
     const openModalClosers = [
       { el: document.getElementById('speech-error-modal-backdrop'), close: closeSpeechErrorModal },
-      { el: document.getElementById('session-summary-modal-backdrop'), close: closeSessionSummaryModal },
-      { el: document.getElementById('testing-suite-modal-backdrop'), close: closeTestingSuiteModal },
       { el: document.getElementById('reintroduce-skill-modal-backdrop'), close: closeReintroduceSkillModal },
       { el: document.getElementById('skip-stage-modal-backdrop'), close: closeSkipStageModal },
       { el: document.getElementById('stage-complete-award-modal-backdrop'), close: closeStageCompleteAwardModal },
       { el: document.getElementById('next-stage-preview-modal-backdrop'), close: closeNextStagePreviewModal },
+      { el: document.getElementById('topic-exam-failed-modal-backdrop'), close: closeTopicExamFailedModal },
       { el: document.getElementById('browser-warning-modal-backdrop'), close: closeBrowserWarningModal },
       { el: subjectCompleteModalBackdropEl, close: closeSubjectCompleteModal },
       { el: mutedAudioModalBackdropEl, close: closeMutedAudioModal },
-      { el: wipeTopicConfirmModalBackdropEl, close: closeWipeTopicConfirmModal },
-      { el: wipeConfirmModalBackdropEl, close: closeWipeConfirmModal },
       { el: document.getElementById('word-intro-modal-backdrop'), close: () => closeWordIntroModal({ skipStage: false }) },
       { el: document.getElementById('stage-seen-modal-backdrop'), close: closeStageSeenModal },
-      { el: moveDateModalBackdropEl, close: closeMoveDateModal },
-      { el: dataMgmtModalBackdropEl, close: closeDataMgmtModal },
-      { el: deleteModalBackdropEl, close: closeDeleteModal },
       { el: settingsPopoverEl, close: closeSettingsPopover }
     ];
     for (const { el, close } of openModalClosers) {
@@ -3305,6 +3421,11 @@ function wireAppEventListeners() {
     if (e.key === 'Escape' && isHandsFreeRunning()) {
       e.preventDefault();
       pauseHandsFreeSession('user');
+      return;
+    }
+
+    if (e.key === 'Escape' && closeUnitCogMenu()) {
+      e.preventDefault();
       return;
     }
 
@@ -3357,6 +3478,24 @@ function wireAppEventListeners() {
         return;
       }
       e.preventDefault();
+      const incorrectPanelEl = document.getElementById('incorrect-screen-panel');
+      const isIncorrectVisible = Boolean(incorrectPanelEl && !incorrectPanelEl.classList.contains('hidden'));
+      const canRevealSpanish =
+        state.questionType !== 'speak' ||
+        state.practiceMode ||
+        state.answered ||
+        isIncorrectVisible ||
+        (!isTopicExamActive() && (voiceCaptureState.attemptCount > 0 || voiceCaptureState.retryRoundUsed));
+      if (!canRevealSpanish) {
+        if (typeAnswerFeedbackEl) {
+          typeAnswerFeedbackEl.textContent = isTopicExamActive()
+            ? 'Spanish audio is locked during the Hard Topic Exam.'
+            : 'Try Attempt 1 first before hearing Spanish.';
+          typeAnswerFeedbackEl.classList.remove('is-invisible', 'is-correct', 'is-incorrect', 'is-transcript');
+          typeAnswerFeedbackEl.classList.add('is-warning');
+        }
+        return;
+      }
       if (checkZeroVolumePrompt()) return;
       speakSpanish(getSpokenTextForCurrentQuestion(), e.shiftKey ? 0.68 : null);
       return;
@@ -3398,7 +3537,7 @@ function wireAppEventListeners() {
       !e.repeat &&
       !state.pttCancelledByEsc &&
       !state.answered &&
-      state.pushToTalk !== false &&
+      !isAnyLearnOverlayOpen() &&
       state.questionType === 'speak' &&
       !voiceCaptureState.isScoring &&
       document.activeElement?.tagName !== 'INPUT' &&
@@ -3455,13 +3594,35 @@ function initApp() {
   });
 
   initAchievements({
-    onRenderPathView: renderPathView
+    onRenderPathView: () => {
+      if (state.activeView === 'stats' && statsCalendarState.subView === 'achievements') {
+        renderStatsAchievements();
+      }
+    }
   });
 
   initGuidebookModule({
     onCloseSettingsPopover: closeSettingsPopover,
     getSpokenText: getSpokenTextForCurrentQuestion,
     isHandsFreeRunning: isHandsFreeRunning,
+    onOpenGuidebookView: () => {
+      switchView('path');
+    },
+    onOpenGuidebookToCurrentStage: () => {
+      const snap = getProgressionSnapshot(state.activeCategory);
+      focusUnitAndStageInPathView(state.activeCategory, snap ? snap.stageIndex : 0);
+      if (state.activeView === 'path') {
+        renderPathView();
+      } else {
+        switchView('path');
+      }
+    },
+    onAfterSkipStage: (result) => {
+      if (result?.unlockedNextUnitId) {
+        setPathExpandedUnitId(result.unlockedNextUnitId);
+      }
+      renderPathView();
+    },
     onSlotChoiceChanged: () => {
       syncSlotOptionsDropdownUI();
       if (state.practiceMode) {
@@ -3473,12 +3634,21 @@ function initApp() {
   initProgressionModule({
     onRenderCategoryNav: renderCategoryNav,
     onRenderPathView: renderPathView,
+    onRenderPlayCategoryState: renderPlayCategoryState,
     onSyncTopicEducateButtonUI: syncTopicEducateButtonUI,
     onSyncQuestionTypeUI: syncQuestionTypeUI,
     onSyncDirectionUI: syncDirectionUI,
     onLoadQuestion: loadQuestion,
     onSwitchCategory: switchCategory,
     onSwitchView: switchView,
+    onStageSelected: ({ catId }) => {
+      setPathExpandedUnitId(catId);
+      resetExamQuantityScenarioPool();
+      syncPanamaSettingsUI();
+      updateTopMetrics();
+      syncModeVisuals();
+      syncWeakDrillBannerUI();
+    },
     onHandsFreeStageComplete: handleHandsFreeStageComplete,
     onHandsFreeExamFailed: () => {
       pauseHandsFreeSession(
@@ -3579,6 +3749,8 @@ function initApp() {
     onRecordPronunciationAttempt: recordPronunciationAttempt,
     onPlayCorrectSound: playCorrectSound,
     onPlayIncorrectSound: playIncorrectSound,
+    onFullAnswerReward: triggerFullAnswerVisualReward,
+    onClearFullAnswerReward: clearFullAnswerVisualReward,
     onStartFeedbackProgressBar: startFeedbackProgressBar,
     onPauseFeedbackForPlayback: () => {
       if (state.answered && !state.progressPaused) {
@@ -3599,34 +3771,6 @@ function initApp() {
     onHandsFreeMicEnded: handleHandsFreeMicEnded,
     onManualVoiceAction: () => handleHandsFreeManualInteraction('manual-interaction'),
     isHardTopicExamActive: () => isTopicExamActive()
-  });
-
-  initTestingTools({
-    getSpokenText: getSpokenTextForCurrentQuestion,
-    getDisplayText: getDisplaySpanishForCurrentQuestion,
-    getActivePhraseData,
-    getQuestionSplit: getActiveQuestionSplit,
-    getExpectedAlternatives: () => {
-      if (state.activeCategory !== 'numbers') {
-        const item = getActivePhraseData();
-        return item ? buildPhraseSpanishCandidates(item) : [];
-      }
-      const ctx = state.currentContext || buildQuestionContext(state.currentNum, state.contextMode);
-      return [ctx.answerEs, ctx.spokenEs, ...(ctx.altAnswersEs || [])].filter(Boolean);
-    },
-    onCloseSettingsPopover: closeSettingsPopover,
-    onSwitchCategory: switchCategory,
-    onSwitchView: switchView,
-    onSyncQuestionTypeUI: syncQuestionTypeUI,
-    onSyncDirectionUI: syncDirectionUI,
-    onSyncPracticeModeCardUI: syncPracticeModeCardUI,
-    onUpdateMemoryTipUI: updateMemoryTipUI,
-    onUpdateDailyGoalUI: updateDailyGoalUI,
-    onEvaluateAchievements: evaluateAllAchievements,
-    onRenderCategoryNav: renderCategoryNav,
-    onRenderPathView: renderPathView,
-    onLoadQuestion: loadQuestion,
-    onVoiceCommand: handleHandsFreeVoiceCommand
   });
 
   document.getElementById('incorrect-screen-next-btn')?.addEventListener('click', () => {
@@ -3708,8 +3852,20 @@ function initApp() {
     onPracticeUnit: (unitId) => {
       state.weakDrillActive = false;
       state.polishDrillActive = false;
-      switchCategory(unitId);
+      state.revisionDrillActive = false;
       switchView('play');
+      switchCategory(unitId);
+    },
+    onStartRevisionDrill: () => {
+      const revList = getRevisionDrillItems();
+      if (revList.length === 0) return;
+      state.weakDrillActive = false;
+      state.polishDrillActive = false;
+      state.practiceMode = false;
+      state.revisionDrillActive = true;
+      switchView('play');
+      syncWeakDrillBannerUI();
+      loadQuestion();
     }
   });
   registerStatsViewHooks({
@@ -3718,13 +3874,14 @@ function initApp() {
         state.reviewFilterCat && state.reviewFilterCat !== 'all' && isCategoryUnlocked(state.reviewFilterCat)
           ? state.reviewFilterCat
           : state.activeCategory;
+      switchView('play');
       if (targetCat !== state.activeCategory && isCategoryUnlocked(targetCat)) {
         switchCategory(targetCat);
       }
+      state.practiceMode = false;
       state.polishDrillActive = false;
       state.weakDrillActive = true;
       syncWeakDrillBannerUI();
-      switchView('play');
       loadQuestion();
     },
     onStartPolishDrill: () => {
@@ -3732,46 +3889,16 @@ function initApp() {
         state.reviewFilterCat && state.reviewFilterCat !== 'all' && isCategoryUnlocked(state.reviewFilterCat)
           ? state.reviewFilterCat
           : state.activeCategory;
+      switchView('play');
       if (targetCat !== state.activeCategory && isCategoryUnlocked(targetCat)) {
         switchCategory(targetCat);
       }
+      state.practiceMode = false;
       state.weakDrillActive = false;
       state.polishDrillActive = true;
       syncWeakDrillBannerUI();
-      switchView('play');
       loadQuestion();
     }
-  });
-
-  initDataManagement({
-    onCloseSettingsPopover: closeSettingsPopover,
-    onPauseStudyTimer: pauseStudyTimerNow,
-    onUpdateStudyTimerUI: updateStudyTimerUI,
-    onUpdateTopMetrics: updateTopMetrics,
-    onSyncPronunciationEngineUI: syncPronunciationEngineUI,
-    onSyncSpeechPreferencesUI: syncSpeechPreferencesUI,
-    onSyncWeakDrillBannerUI: syncWeakDrillBannerUI,
-    onSyncPanamaSettingsUI: syncPanamaSettingsUI,
-    onSyncDirectionUI: syncDirectionUI,
-    onSyncQuestionTypeUI: syncQuestionTypeUI,
-    onRenderCategoryNav: renderCategoryNav,
-    onRenderPlayCategoryState: renderPlayCategoryState,
-    onSyncProgressionUI: syncProgressionUI,
-    onRenderPathView: renderPathView,
-    onUpdateVolumeUI: updateVolumeUI,
-    onUpdateSfxUI: updateSfxUI,
-    onSyncModeVisuals: syncModeVisuals,
-    onApplyTheme: applyTheme,
-    onApplyBlurLocked: applyBlurLocked,
-    onBuildStatsTable: buildStatsTable,
-    onLoadQuestion: loadQuestion,
-    onMaybeOpenNewTopicEducateModal: maybeOpenNewTopicEducateModal,
-    onEvaluateAllAchievements: evaluateAllAchievements,
-    onClearPathExpandedUnitId: () => setPathExpandedUnitId(null),
-    onClearTimelineStages: clearOpenTimelineStageKeys,
-    onDeleteTimelineStagesForCategory: deleteTimelineStagesForCategory,
-    onGetProgressionSnapshot: getProgressionSnapshot,
-    onDismissTransientModals: dismissTransientModalsForModeSwitch
   });
 
   wireAppEventListeners();
@@ -3780,6 +3907,7 @@ function initApp() {
     savePersistedData();
   }
   syncSpeakOnlyModeUI();
+  syncTrackingDisabledUI();
   if (!isCategoryUnlocked(state.activeCategory)) {
     state.activeCategory = getHighestUnlockedCategoryId();
   }
@@ -3810,8 +3938,6 @@ function initApp() {
   updateStudyTimerUI();
   updateDailyGoalUI();
   syncModeVisuals();
-  applyTheme();
-  applyBlurLocked();
   updateTopMetrics();
   buildStatsTable();
   renderStatsCalendar();

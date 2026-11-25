@@ -88,6 +88,7 @@ export function createDefaultUnitProgress() {
     stageTotal: 0,
     skills: createEmptySkillsMap(),
     stageSkills: {},
+    stageRecentOutcomes: {},
     completedStages: [],
     skippedStages: [],
     recentOutcomes: []
@@ -111,15 +112,8 @@ export function isCategoryCompletedInMap(catId, categoryProgressMap) {
   return cat.stages.every((_, idx) => completed.includes(idx));
 }
 
-export function isCategoryUnlockedInMap(catId, categoryProgressMap) {
-  const idx = CATEGORY_ORDER.indexOf(catId);
-  if (idx <= 0) return true;
-  for (let i = 0; i < idx; i++) {
-    if (!isCategoryCompletedInMap(CATEGORY_ORDER[i], categoryProgressMap)) {
-      return false;
-    }
-  }
-  return true;
+export function isCategoryUnlockedInMap(catId) {
+  return Boolean(CATEGORIES[catId]);
 }
 
 export function getPreviousBlockingCategoryInMap(catId, categoryProgressMap) {
@@ -134,6 +128,15 @@ export function getPreviousBlockingCategoryInMap(catId, categoryProgressMap) {
 }
 
 export function getHighestUnlockedCategoryIdInMap(categoryProgressMap) {
+  for (let i = 0; i < CATEGORY_ORDER.length; i++) {
+    const catId = CATEGORY_ORDER[i];
+    if (
+      isCategoryUnlockedInMap(catId, categoryProgressMap) &&
+      !isCategoryCompletedInMap(catId, categoryProgressMap)
+    ) {
+      return catId;
+    }
+  }
   for (let i = CATEGORY_ORDER.length - 1; i >= 0; i--) {
     if (isCategoryUnlockedInMap(CATEGORY_ORDER[i], categoryProgressMap)) {
       return CATEGORY_ORDER[i];
@@ -205,6 +208,15 @@ export function normalizeProgressionBundle(parsed, isSpeakOnly = true) {
           }
         }
       }
+      const stageRecentOutcomes = {};
+      if (src.stageRecentOutcomes && typeof src.stageRecentOutcomes === 'object') {
+        Object.entries(src.stageRecentOutcomes).forEach(([idxKey, val]) => {
+          const nIdx = Number(idxKey);
+          if (Number.isInteger(nIdx) && nIdx >= 0 && nIdx <= maxIdx && Array.isArray(val)) {
+            stageRecentOutcomes[idxKey] = val.slice(-60).map((v) => Boolean(v));
+          }
+        });
+      }
       const recentOutcomes = Array.isArray(src.recentOutcomes)
         ? src.recentOutcomes.slice(-60).map((v) => Boolean(v))
         : [];
@@ -214,6 +226,7 @@ export function normalizeProgressionBundle(parsed, isSpeakOnly = true) {
         stageTotal,
         skills,
         stageSkills,
+        stageRecentOutcomes,
         completedStages: Array.from(completedSet).sort((a, b) => a - b),
         skippedStages: Array.from(skippedSet).sort((a, b) => a - b),
         recentOutcomes

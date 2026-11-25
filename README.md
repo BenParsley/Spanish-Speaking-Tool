@@ -5,13 +5,14 @@ A local-first, speech-only web app for practicing Panamanian Spanish (`es-PA`) a
 ## Features
 - **8 CEFR A1 Units**: Covers greetings, identity, numbers & time, family, daily verbs, food & shopping, city & transit, and weather/health/plans with dynamic sentence variations.
 - **Local Hybrid Pronunciation Scoring**: Evaluates spoken Spanish locally via FastAPI (`127.0.0.1:8765`) with phoneme-level feedback and optional in-session Browser Speech-to-Text fallback.
-- **Base + Optional Variant Prompts**: Only the base phrase is required to pass; optional variants are highlighted in pastel yellow and award a full-answer bonus + mastery tracking when included.
-- **Practice, Graded & Hands-Free Modes**: Includes audio playback, slow/word-by-word listening, Push-to-Talk (`Space`), and hands-free auto-advance.
-- **Guidebook & Progress Tracking**: Jump freely to any stage across all units from the Guidebook, track daily goals and active study time in the header, and review stats, calendar history, and mastery tables.
-- **Debug Mode**: Toggleable at the top of Settings to use the app without recording or saving any changes.
+- **Base + Optional Variant Prompts**: Only the base phrase is required to pass; optional variants are highlighted in pastel yellow, award a full-answer bonus when spoken accurately, and track both correct and incorrect variant attempts separately in Extensions stats.
+- **Speech-First Play & Hands-Free Autopilot**: Features Push-to-Talk (`Space`), slow/word-by-word review playback, a top-right **Hands-Free** steering-wheel autopilot toggle (`Alt+H`), smart skip cooldowns (2nd skip bans a base question for 10 questions; 3rd+ skip bans for an additional 15 questions), and automatic skip deduplication.
+- **Learn Progression Map & Revision Drill**: Two-column progression map (`A1.1`–`A1.8`) with a connected unit rail, horizontal stage stepper, inline Topic Rules, per-unit Cog controls (`Play`, `Intros`, `Skip`, `Undo Skip`), audio replay on every vocabulary row, and a dedicated **Revision (`< 75%`)** view with one-click **Play Revision** drilling.
+- **Calendar and Stats**: Unified **Calendar** (with Daily Goal & Time Spent progress bars, Month/Week views, and slide-out day details), **Trends** (`Time Spent`, `New Words`, `Pronunciation`), **Mastery Table** (with Base skip tracking and a **Banned** filter for problem words), and **Achievements**.
+- **Developer Tools & Backups**: Collapsible Settings sections with **Debug Mode** (no tracking/saving), toggleable **Speech Console**, and **Export / Import JSON** progress backups.
 
 ## Requirements
-- Windows with **Google Chrome** (required for full microphone and speech support)
+- Windows with **Google Chrome** (recommended for full microphone and speech support)
 - **Python 3.12** (for the local AI scorer and web server)
 
 ## Quick Start

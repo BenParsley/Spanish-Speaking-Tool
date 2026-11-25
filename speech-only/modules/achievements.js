@@ -5,13 +5,13 @@ import {
   achievementToastIconEl,
   achievementToastTitleEl
 } from './dom.js';
-import { savePersistedData, state } from './state.js';
+import { isTrackingDisabled, savePersistedData, state } from './state.js';
 import { getTodayActiveSeconds } from './study-timer.js';
 import {
   DAILY_TIME_GOAL_SECONDS,
   createDefaultJourneyRewards
 } from './tracking-schema.js';
-import { getLocalDateKey, parseLocalDateKeyMs } from './utils.js';
+import { getLocalDateKey, parseDateKeyLocal, parseLocalDateKeyMs } from './utils.js';
 
 let achievementHooks = {
   onRenderPathView: () => { }
@@ -101,7 +101,7 @@ export function getBestDaysInSingleWeek() {
   keys.forEach((dateKey) => {
     const ms = parseLocalDateKeyMs(dateKey);
     if (!Number.isFinite(ms)) return;
-    const d = new Date(ms);
+    const d = parseDateKeyLocal(dateKey);
     const offset = (d.getDay() + 6) % 7; // Monday = 0
     const mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() - offset);
     const weekId = getLocalDateKey(mon);
@@ -141,16 +141,16 @@ export function getCurrentWeekFlameStrip(now = new Date()) {
 }
 
 export const JOURNEY_CATEGORIES = [
-  { id: 'all', label: 'All Stamps', emoji: '✨' },
-  { id: 'rhythm', label: 'Daily Rhythm', emoji: '🔥' },
-  { id: 'lifestyle', label: 'Personal Rituals', emoji: '🌅' },
-  { id: 'speaking', label: 'Speaking Joy', emoji: '🎙️' }
+  { id: 'all', label: 'All', emoji: '' },
+  { id: 'rhythm', label: 'Daily Rhythm', emoji: '' },
+  { id: 'lifestyle', label: 'Rituals', emoji: '' },
+  { id: 'speaking', label: 'Speaking', emoji: '' }
 ];
 
 export const DEFAULT_PASSPORT_TITLE = {
   id: 'first_spark',
-  emoji: '🌱',
-  label: 'First Spark'
+  emoji: '',
+  label: 'Starter'
 };
 
 export const ACHIEVEMENTS = [
@@ -159,9 +159,9 @@ export const ACHIEVEMENTS = [
     id: 'flame_keeper',
     category: 'rhythm',
     categoryLabel: 'Daily Rhythm',
-    emoji: '🔥',
-    title: 'Flame Keeper',
-    desc: 'Show up and speak on consecutive days in a row',
+    emoji: '',
+    title: 'Daily Streak',
+    desc: 'Practice on consecutive days',
     rewardTitle: 'Streak Keeper',
     tiers: [2, 3, 7, 14, 30],
     tierUnit: 'd',
@@ -173,10 +173,10 @@ export const ACHIEVEMENTS = [
     id: 'habit_builder',
     category: 'rhythm',
     categoryLabel: 'Daily Rhythm',
-    emoji: '📅',
-    title: 'Steady Traveler',
-    desc: 'Total distinct days showing up for your Spanish journey',
-    rewardTitle: 'Steady Traveler',
+    emoji: '',
+    title: 'Active Days',
+    desc: 'Total distinct study days',
+    rewardTitle: 'Steady Learner',
     tiers: [1, 5, 12, 25, 50],
     tierUnit: 'd',
     formatValue: (v) => `${Math.floor(Number(v) || 0)}d`,
@@ -187,9 +187,9 @@ export const ACHIEVEMENTS = [
     id: 'thirty_min_club',
     category: 'rhythm',
     categoryLabel: 'Daily Rhythm',
-    emoji: '⏱️',
-    title: 'The 30-Minute Club',
-    desc: 'Hit your 30-minute daily active study goal on separate days',
+    emoji: '',
+    title: '30-Minute Goal',
+    desc: 'Reach the 30-minute daily study goal',
     rewardTitle: 'Daily Ritualist',
     tiers: [1, 3, 7, 14, 30],
     tierUnit: 'd',
@@ -201,9 +201,9 @@ export const ACHIEVEMENTS = [
     id: 'full_week_warrior',
     category: 'rhythm',
     categoryLabel: 'Daily Rhythm',
-    emoji: '🌈',
-    title: 'Weekly Rhythm',
-    desc: 'Practice on multiple distinct days within a single Mon–Sun week',
+    emoji: '',
+    title: 'Weekly Consistency',
+    desc: 'Active days within a single Mon–Sun week',
     rewardTitle: 'Rhythm Master',
     tiers: [2, 3, 4, 5, 7],
     tierUnit: 'd',
@@ -212,15 +212,15 @@ export const ACHIEVEMENTS = [
     getValue: () => getBestDaysInSingleWeek()
   },
 
-  // ===== PERSONAL RITUALS (Lifestyle & Resilience) =====
+  // ===== RITUALS (Schedule & Resilience) =====
   {
     id: 'morning_cafecito',
     category: 'lifestyle',
-    categoryLabel: 'Personal Rituals',
-    emoji: '☕',
-    title: 'Morning Cafecito',
-    desc: 'Kick off your morning with Spanish (before 11:00 AM) across days',
-    rewardTitle: 'Morning Cafecito',
+    categoryLabel: 'Rituals',
+    emoji: '',
+    title: 'Morning Practice',
+    desc: 'Study before 11:00 AM',
+    rewardTitle: 'Early Bird',
     tiers: [1, 3, 7, 14, 21],
     tierUnit: 'd',
     formatValue: (v) => `${Math.floor(Number(v) || 0)}d`,
@@ -230,10 +230,10 @@ export const ACHIEVEMENTS = [
   {
     id: 'night_owl',
     category: 'lifestyle',
-    categoryLabel: 'Personal Rituals',
-    emoji: '🌙',
-    title: 'Sunset & Night Owl',
-    desc: 'Wind down with evening Spanish (after 6:00 PM) across days',
+    categoryLabel: 'Rituals',
+    emoji: '',
+    title: 'Evening Practice',
+    desc: 'Study after 6:00 PM',
     rewardTitle: 'Night Owl',
     tiers: [1, 3, 7, 14, 21],
     tierUnit: 'd',
@@ -244,11 +244,11 @@ export const ACHIEVEMENTS = [
   {
     id: 'weekend_explorer',
     category: 'lifestyle',
-    categoryLabel: 'Personal Rituals',
-    emoji: '🌴',
-    title: 'Weekend Explorer',
-    desc: 'Keep your Spanish glowing on Saturdays and Sundays',
-    rewardTitle: 'Weekend Explorer',
+    categoryLabel: 'Rituals',
+    emoji: '',
+    title: 'Weekend Practice',
+    desc: 'Study on Saturdays or Sundays',
+    rewardTitle: 'Weekend Regular',
     tiers: [1, 2, 4, 8, 12],
     tierUnit: 'd',
     formatValue: (v) => `${Math.floor(Number(v) || 0)}d`,
@@ -258,10 +258,10 @@ export const ACHIEVEMENTS = [
   {
     id: 'phoenix_return',
     category: 'lifestyle',
-    categoryLabel: 'Personal Rituals',
-    emoji: '🌟',
-    title: 'Welcome Back!',
-    desc: 'Return to practice after a 2+ day break — showing up again always wins',
+    categoryLabel: 'Rituals',
+    emoji: '',
+    title: 'Comeback',
+    desc: 'Return to practice after a 2+ day break',
     rewardTitle: 'Resilient Speaker',
     tiers: [1, 2, 3, 5, 8],
     tierUnit: '×',
@@ -270,15 +270,15 @@ export const ACHIEVEMENTS = [
     getValue: () => Number(ensureJourneyRewards().comebackCount) || 0
   },
 
-  // ===== SPEAKING JOY (Crisp voice, flow & breakthroughs) =====
+  // ===== SPEAKING (Pronunciation, flow & breakthroughs) =====
   {
     id: 'golden_voice',
     category: 'speaking',
-    categoryLabel: 'Speaking Joy',
-    emoji: '🎙️',
-    title: 'Golden Voice',
-    desc: 'Nail crisp 90%+ pronunciation scores while speaking aloud',
-    rewardTitle: 'Golden Voice',
+    categoryLabel: 'Speaking',
+    emoji: '',
+    title: 'Clear Pronunciation',
+    desc: 'Score 90%+ pronunciation on spoken answers',
+    rewardTitle: 'Clear Speaker',
     tiers: [3, 15, 40, 100, 250],
     tierUnit: '',
     formatValue: formatAchievementTarget,
@@ -288,10 +288,10 @@ export const ACHIEVEMENTS = [
   {
     id: 'flow_state',
     category: 'speaking',
-    categoryLabel: 'Speaking Joy',
-    emoji: '⚡',
-    title: 'In the Flow',
-    desc: 'Build an uninterrupted correct speaking combo in Graded Mode',
+    categoryLabel: 'Speaking',
+    emoji: '',
+    title: 'Answer Streak',
+    desc: 'Consecutive correct answers in Graded Mode',
     rewardTitle: 'Flow Master',
     tiers: [5, 10, 20, 35, 50],
     tierUnit: '',
@@ -302,11 +302,11 @@ export const ACHIEVEMENTS = [
   {
     id: 'memory_breakthrough',
     category: 'speaking',
-    categoryLabel: 'Speaking Joy',
-    emoji: '💡',
-    title: 'Aha! Breakthrough',
-    desc: 'Conquer tricky words you previously missed 3+ times',
-    rewardTitle: 'Memory Ninja',
+    categoryLabel: 'Speaking',
+    emoji: '',
+    title: 'Difficult Items Cleared',
+    desc: 'Correctly answer items missed 3+ times',
+    rewardTitle: 'Problem Solver',
     tiers: [1, 3, 8, 15, 30],
     tierUnit: '',
     formatValue: formatAchievementTarget,
@@ -316,11 +316,11 @@ export const ACHIEVEMENTS = [
   {
     id: 'time_invested',
     category: 'speaking',
-    categoryLabel: 'Speaking Joy',
-    emoji: '🧭',
-    title: 'Hours of Spanish',
-    desc: 'Total active speaking & learning time invested across all days',
-    rewardTitle: 'Spanish Voyager',
+    categoryLabel: 'Speaking',
+    emoji: '',
+    title: 'Study Time',
+    desc: 'Total active study time across all days',
+    rewardTitle: 'Dedicated Learner',
     tiers: [900, 3600, 10800, 36000, 90000], // 15m, 1h, 3h, 10h, 25h
     tierUnit: '',
     formatValue: formatAchievementDuration,
@@ -373,12 +373,14 @@ export function getEquippedTitle() {
 }
 
 export function setLearnerName(name) {
+  if (isTrackingDisabled()) return;
   const jr = ensureJourneyRewards();
   jr.learnerName = String(name || '').trim().slice(0, 28);
   savePersistedData();
 }
 
 export function setEquippedTitle(titleId) {
+  if (isTrackingDisabled()) return;
   const jr = ensureJourneyRewards();
   const unlocked = getUnlockedTitles();
   if (unlocked.some((t) => t.id === titleId)) {
@@ -463,7 +465,7 @@ export function showNextAchievementToast() {
   if (!nextAch) return;
 
   if (achievementToastIconEl) {
-    achievementToastIconEl.textContent = nextAch.emoji || '✨';
+    achievementToastIconEl.textContent = nextAch.badge || 'Lv';
   }
   if (achievementToastTitleEl) achievementToastTitleEl.textContent = nextAch.title;
   if (achievementToastDescEl) achievementToastDescEl.textContent = nextAch.desc;
@@ -502,6 +504,7 @@ export function clearAchievementQueue() {
 }
 
 export function evaluateAllAchievements({ silent = false, outcome = null, recordActivity = false } = {}) {
+  if (isTrackingDisabled()) return;
   const jr = ensureJourneyRewards();
   const now = new Date();
   const todayKey = getLocalDateKey(now);
@@ -605,12 +608,11 @@ export function evaluateAllAchievements({ silent = false, outcome = null, record
       };
       unlockedChanged = true;
       if (!silent) {
-        const who = learnerName ? `Way to go, ${learnerName}! ` : '';
-        const titleReward = prevLevel === 0 ? ` · Unlocked title "${ach.rewardTitle}"` : '';
+        const titleReward = prevLevel === 0 ? ` · Title unlocked: ${ach.rewardTitle}` : '';
         achievementQueue.push({
-          emoji: ach.emoji,
-          title: `${ach.title} · Stamp ${nextLevel}/5`,
-          desc: `${who}Reached ${ach.formatTarget(ach.tiers[nextLevel - 1])}${titleReward}`
+          badge: `${nextLevel}/5`,
+          title: `${ach.title} · Level ${nextLevel}/5`,
+          desc: `Reached ${ach.formatTarget(ach.tiers[nextLevel - 1])}${titleReward}`
         });
       }
     }

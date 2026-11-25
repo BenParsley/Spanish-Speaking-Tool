@@ -12,6 +12,17 @@ import {
   getStructureVariationCount
 } from '../curriculum/index.js';
 import {
+  JOURNEY_CATEGORIES,
+  ensureJourneyRewards,
+  formatAchievementTarget,
+  getAchievementDisplay,
+  getAchievementLevel,
+  getActiveAchievements,
+  getJourneyPassportSummary,
+  setEquippedTitle,
+  setLearnerName
+} from './achievements.js';
+import {
   DAILY_CORRECT_GOAL,
   DAILY_TIME_GOAL_SECONDS,
   DAILY_TOTAL_GOAL,
@@ -53,13 +64,16 @@ import {
   statsPeriodAllBtn,
   statsPeriodMonthBtn,
   statsPeriodWeekBtn,
+  statsScopeBannedBtn,
   statsScopeBaseBtn,
   statsScopeBothBtn,
   statsScopeExtensionsBtn,
   statsSubjectFilterEl,
+  statsTabAchievementsBtn,
   statsTabCalendarBtn,
   statsTabTableBtn,
   statsTabTrendsBtn,
+  statsAchievementsViewEl,
   statsTableViewEl,
   statsTableWrapEl,
   statsTbodyEl,
@@ -91,10 +105,12 @@ export function registerStatsViewHooks(hooks = {}) {
 }
 
 export const statsCalendarState = {
-  subView: 'calendar', // 'calendar' | 'trends' | 'table'
-  activeTrend: 'pronunciation', // 'pronunciation' | 'newWords' | 'timeSpent'
+  subView: 'calendar', // 'calendar' | 'trends' | 'table' | 'achievements'
+  calendarMode: 'month', // 'month' | 'week'
+  activeTrend: 'timeSpent', // 'timeSpent' | 'newWords' | 'pronunciation'
   trendPeriod: 'global', // 'global' | 'month' | 'week'
   tableScope: 'both', // 'both' | 'base' | 'extensions'
+  achievementScope: 'all',
   extSortKey: 'name', // 'name' | 'correct' | 'incorrect' | 'pct' | 'pronunciation' | 'trophy'
   extSortDir: 'asc',
   year: new Date().getFullYear(),
@@ -106,24 +122,61 @@ export const statsCalendarState = {
   pickerMonth: new Date().getMonth()
 };
 
-const VALID_STATS_TRENDS = ['pronunciation', 'newWords', 'timeSpent'];
+const VALID_STATS_TRENDS = ['timeSpent', 'newWords', 'pronunciation'];
 const VALID_TREND_PERIODS = ['global', 'month', 'week'];
 const PRONUNCIATION_TREND_TARGET = 80;
 const SHORT_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const FADE_SWAP_MS = 160;
 let currentTrendHoverMap = {};
 const openStatsFillItemIds = new Set();
+let statsSubViewFadeTimer = null;
+let statsPeriodFadeTimer = null;
+let statsTrendFadeTimer = null;
+
+function fadeSwapElement(el, timerKey, onSwap) {
+  if (!el) {
+    onSwap();
+    return;
+  }
+  const clearTimer = (t) => {
+    if (t !== null) clearTimeout(t);
+  };
+  if (timerKey === 'period') {
+    clearTimer(statsPeriodFadeTimer);
+    statsPeriodFadeTimer = null;
+  } else if (timerKey === 'trend') {
+    clearTimer(statsTrendFadeTimer);
+    statsTrendFadeTimer = null;
+  }
+  el.classList.add('is-fading-out');
+  const tid = setTimeout(() => {
+    if (timerKey === 'period') statsPeriodFadeTimer = null;
+    if (timerKey === 'trend') statsTrendFadeTimer = null;
+    onSwap();
+    void el.offsetWidth;
+    el.classList.remove('is-fading-out');
+  }, FADE_SWAP_MS);
+  if (timerKey === 'period') statsPeriodFadeTimer = tid;
+  if (timerKey === 'trend') statsTrendFadeTimer = tid;
+}
 
 export function setStatsActiveTrend(trendKey) {
   if (!VALID_STATS_TRENDS.includes(trendKey)) return;
+  if (statsCalendarState.activeTrend === trendKey) return;
   statsCalendarState.activeTrend = trendKey;
-  renderStatsAnalyticsWidgets();
+  fadeSwapElement(statsAnalyticsWidgetsEl, 'trend', () => {
+    renderStatsAnalyticsWidgets();
+  });
 }
 
 export function setStatsTrendPeriod(periodKey) {
   if (!VALID_TREND_PERIODS.includes(periodKey)) return;
+  if (statsCalendarState.trendPeriod === periodKey) return;
   statsCalendarState.trendPeriod = periodKey;
   syncStatsPeriodButtonsUI();
-  renderStatsAnalyticsWidgets();
+  fadeSwapElement(statsAnalyticsWidgetsEl, 'trend', () => {
+    renderStatsAnalyticsWidgets();
+  });
 }
 
 function syncStatsPeriodButtonsUI() {
@@ -142,14 +195,14 @@ function syncStatsPeriodButtonsUI() {
   if (statsPeriodMonthBtn) {
     const isMonth = isTrends
       ? statsCalendarState.trendPeriod === 'month'
-      : !statsCalendarState.detailOpen;
+      : statsCalendarState.calendarMode !== 'week';
     statsPeriodMonthBtn.classList.toggle('active', isMonth);
     statsPeriodMonthBtn.setAttribute('aria-pressed', String(isMonth));
   }
   if (statsPeriodWeekBtn) {
     const isWeek = isTrends
       ? statsCalendarState.trendPeriod === 'week'
-      : Boolean(statsCalendarState.detailOpen);
+      : statsCalendarState.calendarMode === 'week';
     statsPeriodWeekBtn.classList.toggle('active', isWeek);
     statsPeriodWeekBtn.setAttribute('aria-pressed', String(isWeek));
   }
@@ -300,7 +353,7 @@ export function renderStatsCalendarDayDetail(dateKey, dailyStats) {
   ).map((catId) => CATEGORIES[catId].label);
 
   const missedNumItems = Object.entries(scope.perNum || {}).map(([numStr, s]) => ({
-    label: `${numStr} (${SPANISH_NUMBERS[Number(numStr)]})`,
+    label: `${numStr} (${SPANISH_NUMBERS[Number(numStr)] || numStr})`,
     ...s,
     pct: Math.round((s.correct / s.total) * 100)
   }));
@@ -369,89 +422,107 @@ export function renderStatsCalendarDayDetail(dateKey, dailyStats) {
   const { byDate: newWordsByDate } = computeDailyNewWordsMap();
   const dayNewWords = Number(newWordsByDate[dateKey]) || 0;
 
-  if (!statsCalendarState.detailOpen) {
-    const pronBit = dayPronAvg >= 0 ? ` · Avg pron ${dayPronAvg}%` : (allTimePron.avg >= 0 ? ` · All-time pron ${allTimePron.avg}%` : '');
-    const newBit = dayNewWords > 0 ? ` · ${dayNewWords} new` : '';
-    const timeBit = `${formatDurationSeconds(studySeconds)}/30m${timeGoalReached ? ' ✓' : ''}`;
-    const summaryText =
-      dayStats.total > 0 || studySeconds > 0 || dayNewWords > 0
-        ? `${timeBit} · ${dayStats.correct}/${DAILY_CORRECT_GOAL} correct · ${dayStats.total}/${DAILY_TOTAL_GOAL} total (${pct}%)${newBit}${pronBit}`
-        : 'No study recorded';
-
-    statsCalDetailEl.innerHTML = `
-      <div class="stats-cal-footer-bar">
-        <div class="stats-cal-footer-summary">
-          <span class="stats-cal-footer-date">${escapeHtmlText(formatDateKeyLabel(dateKey))}</span>
-          <span class="stats-cal-footer-stats">${escapeHtmlText(summaryText)}</span>
-        </div>
-        <button type="button" id="stats-cal-expand-btn" class="stats-cal-collapse-btn stats-cal-arrow-btn" aria-label="Expand date details"><span class="stats-cal-arrow" aria-hidden="true">▴</span></button>
-        <span class="stats-cal-detail-badge${goalReached ? ' is-goal-met' : ''}">${badgeText}</span>
-      </div>
-    `;
-    return;
-  }
+  const pronBit = dayPronAvg >= 0 ? ` · Avg pron ${dayPronAvg}%` : (allTimePron.avg >= 0 ? ` · All-time pron ${allTimePron.avg}%` : '');
+  const newBit = dayNewWords > 0 ? ` · ${dayNewWords} new` : '';
+  const timeBit = `${formatDurationSeconds(studySeconds)}/30m${timeGoalReached ? ' ✓' : ''}`;
+  const summaryText =
+    dayStats.total > 0 || studySeconds > 0 || dayNewWords > 0
+      ? `${timeBit} · ${dayStats.correct}/${DAILY_CORRECT_GOAL} correct · ${dayStats.total}/${DAILY_TOTAL_GOAL} total (${pct}%)${newBit}${pronBit}`
+      : 'No study recorded';
+  const isOpen = Boolean(statsCalendarState.detailOpen);
 
   statsCalDetailEl.innerHTML = `
-    <div class="stats-cal-detail-header">
-      <span class="stats-cal-detail-title">${escapeHtmlText(formatDateKeyLabel(dateKey))}</span>
-      <button type="button" id="stats-cal-collapse-btn" class="stats-cal-collapse-btn stats-cal-arrow-btn is-open" aria-label="Collapse date details"><span class="stats-cal-arrow" aria-hidden="true">▴</span></button>
+    <div class="stats-cal-footer-bar">
+      <div class="stats-cal-footer-summary">
+        <span class="stats-cal-footer-date">${escapeHtmlText(formatDateKeyLabel(dateKey))}</span>
+        <span class="stats-cal-footer-stats">${escapeHtmlText(summaryText)}</span>
+      </div>
+      <button type="button" id="stats-cal-collapse-btn" class="stats-cal-collapse-btn stats-cal-arrow-btn${isOpen ? ' is-open' : ''}" aria-expanded="${isOpen}" aria-label="${isOpen ? 'Collapse date details' : 'Expand date details'}"><span class="stats-cal-arrow" aria-hidden="true">▴</span></button>
       <span class="stats-cal-detail-badge${goalReached ? ' is-goal-met' : ''}">${badgeText}</span>
     </div>
 
-    <div class="breakdown-summary-grid">
-      <div class="breakdown-stat-card">
-        <span class="breakdown-stat-label">Progress</span>
-        <span class="breakdown-stat-value">${dayStats.total > 0 ? `${pct}%` : '—'}</span>
-        <span class="breakdown-stat-sub">${dayStats.correct}/${DAILY_CORRECT_GOAL} correct · ${dayStats.total}/${DAILY_TOTAL_GOAL} total</span>
-      </div>
-      <div class="breakdown-stat-card">
-        <span class="breakdown-stat-label">Topics Practiced</span>
-        <span class="breakdown-stat-value">${activeSubjects.length}</span>
-        <span class="breakdown-stat-sub">${activeSubjects.length > 0 ? `${escapeHtmlText(activeSubjects.join(', '))}${dayNewWords > 0 ? ` · ${dayNewWords} new` : ''}` : (dayNewWords > 0 ? `${dayNewWords} new word${dayNewWords === 1 ? '' : 's'} shown` : 'None recorded')}</span>
-      </div>
-      <div class="breakdown-stat-card">
-        <span class="breakdown-stat-label">Sessions</span>
-        <span class="breakdown-stat-value">${sessionCount}</span>
-        <span class="breakdown-stat-sub">${sessionCount > 0 ? '15m gap = new session' : 'No sessions recorded'}</span>
-      </div>
-      <div class="breakdown-stat-card">
-        <span class="breakdown-stat-label">Active Study Length</span>
-        <span class="breakdown-stat-value">${sessionCount > 0 ? formatDurationSeconds(activeStudyLengthSeconds) : '—'}</span>
-        <span class="breakdown-stat-sub">${sessionCount > 0 ? `${sessionCount} × ${formatDurationSeconds(avgSessionSeconds)} avg` : 'No sessions recorded'}</span>
-      </div>
-      <div class="breakdown-stat-card">
-        <span class="breakdown-stat-label">Study Time</span>
-        <span class="breakdown-stat-value">${formatDurationSeconds(studySeconds)}</span>
-        <span class="breakdown-stat-sub">${timeGoalPct}% of 30m daily goal${timeGoalReached ? ' ✓' : ''}</span>
-      </div>
-      <div class="breakdown-stat-card">
-        <span class="breakdown-stat-label">Avg Pronunciation</span>
-        <span class="breakdown-stat-value">${dayPronAvg >= 0 ? `${dayPronAvg}%` : (allTimePron.avg >= 0 ? `${allTimePron.avg}%` : '—')}</span>
-        <span class="breakdown-stat-sub">${escapeHtmlText(dayPronSub)}</span>
+    <div class="stats-cal-detail-collapse" aria-hidden="${!isOpen}">
+      <div class="stats-cal-detail-collapse-inner">
+        <div class="breakdown-summary-grid">
+          <div class="breakdown-stat-card">
+            <span class="breakdown-stat-label">Progress</span>
+            <span class="breakdown-stat-value">${dayStats.total > 0 ? `${pct}%` : '—'}</span>
+            <span class="breakdown-stat-sub">${dayStats.correct}/${DAILY_CORRECT_GOAL} correct · ${dayStats.total}/${DAILY_TOTAL_GOAL} total</span>
+          </div>
+          <div class="breakdown-stat-card">
+            <span class="breakdown-stat-label">Topics Practiced</span>
+            <span class="breakdown-stat-value">${activeSubjects.length}</span>
+            <span class="breakdown-stat-sub">${activeSubjects.length > 0 ? `${escapeHtmlText(activeSubjects.join(', '))}${dayNewWords > 0 ? ` · ${dayNewWords} new` : ''}` : (dayNewWords > 0 ? `${dayNewWords} new word${dayNewWords === 1 ? '' : 's'} shown` : 'None recorded')}</span>
+          </div>
+          <div class="breakdown-stat-card">
+            <span class="breakdown-stat-label">Sessions</span>
+            <span class="breakdown-stat-value">${sessionCount}</span>
+            <span class="breakdown-stat-sub">${sessionCount > 0 ? '15m gap = new session' : 'No sessions recorded'}</span>
+          </div>
+          <div class="breakdown-stat-card">
+            <span class="breakdown-stat-label">Active Study Length</span>
+            <span class="breakdown-stat-value">${sessionCount > 0 ? formatDurationSeconds(activeStudyLengthSeconds) : '—'}</span>
+            <span class="breakdown-stat-sub">${sessionCount > 0 ? `${sessionCount} × ${formatDurationSeconds(avgSessionSeconds)} avg` : 'No sessions recorded'}</span>
+          </div>
+          <div class="breakdown-stat-card">
+            <span class="breakdown-stat-label">Study Time</span>
+            <span class="breakdown-stat-value">${formatDurationSeconds(studySeconds)}</span>
+            <span class="breakdown-stat-sub">${timeGoalPct}% of 30m daily goal${timeGoalReached ? ' ✓' : ''}</span>
+          </div>
+          <div class="breakdown-stat-card">
+            <span class="breakdown-stat-label">Avg Pronunciation</span>
+            <span class="breakdown-stat-value">${dayPronAvg >= 0 ? `${dayPronAvg}%` : '—'}</span>
+            <span class="breakdown-stat-sub">${escapeHtmlText(dayPronSub)}</span>
+          </div>
+        </div>
+
+        <div class="stats-cal-reflection-card">
+          <span class="stats-cal-reflection-label">Reflection &amp; Where to Improve</span>
+          <p class="stats-cal-reflection-text">${escapeHtmlText(reflectionNote)}</p>
+        </div>
+
+        ${subjectRowsHTML
+          ? `<div class="breakdown-section-card">
+              <div class="breakdown-section-title">Subject Progress</div>
+              <div class="breakdown-metric-list">${subjectRowsHTML}</div>
+            </div>`
+          : ''
+        }
+        ${weakItemsHTML}
       </div>
     </div>
-
-    <div class="stats-cal-reflection-card">
-      <span class="stats-cal-reflection-label">Reflection &amp; Where to Improve</span>
-      <p class="stats-cal-reflection-text">${escapeHtmlText(reflectionNote)}</p>
-    </div>
-
-    ${subjectRowsHTML
-      ? `<div class="breakdown-section-card">
-          <div class="breakdown-section-title">Subject Progress</div>
-          <div class="breakdown-metric-list">${subjectRowsHTML}</div>
-        </div>`
-      : ''
-    }
-    ${weakItemsHTML}
   `;
 
-  const collapseBtn = document.getElementById('stats-cal-collapse-btn');
-  if (collapseBtn) {
-    collapseBtn.addEventListener('click', (e) => {
+  const toggleBtn = document.getElementById('stats-cal-collapse-btn');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      statsCalendarState.detailOpen = false;
-      renderStatsCalendar();
+      setCalendarDetailOpen(!statsCalendarState.detailOpen);
+    });
+  }
+}
+
+function setCalendarDetailOpen(nextOpen) {
+  const isOpen = Boolean(nextOpen);
+  statsCalendarState.detailOpen = isOpen;
+  if (statsCalendarViewEl) {
+    statsCalendarViewEl.classList.toggle('is-detail-open', isOpen);
+  }
+  if (statsCalDetailEl) {
+    statsCalDetailEl.classList.toggle('is-open', isOpen);
+    const collapseEl = statsCalDetailEl.querySelector('.stats-cal-detail-collapse');
+    if (collapseEl) collapseEl.setAttribute('aria-hidden', String(!isOpen));
+    const toggleBtn = statsCalDetailEl.querySelector('#stats-cal-collapse-btn');
+    if (toggleBtn) {
+      toggleBtn.classList.toggle('is-open', isOpen);
+      toggleBtn.setAttribute('aria-expanded', String(isOpen));
+      toggleBtn.setAttribute('aria-label', isOpen ? 'Collapse date details' : 'Expand date details');
+    }
+  }
+  if (statsCalGridEl) {
+    statsCalGridEl.querySelectorAll('[data-cal-date]').forEach((btn) => {
+      const isSel = isOpen && btn.dataset.calDate === statsCalendarState.selectedDateKey;
+      btn.classList.toggle('is-selected', isSel);
     });
   }
 }
@@ -727,6 +798,7 @@ export function renderStatsCalendar() {
   }
 
   const isDetailOpen = Boolean(statsCalendarState.detailOpen);
+  const isWeekMode = statsCalendarState.calendarMode === 'week';
   statsCalendarState.detailOpen = isDetailOpen;
   if (statsCalendarViewEl) {
     statsCalendarViewEl.classList.toggle('is-detail-open', isDetailOpen);
@@ -736,7 +808,7 @@ export function renderStatsCalendar() {
   }
 
   let gridHTML = '';
-  if (isDetailOpen) {
+  if (isWeekMode) {
     const selectedDate = parseDateKeyLocal(statsCalendarState.selectedDateKey);
     const dayOffset = (selectedDate.getDay() + 6) % 7;
     const weekStart = new Date(selectedDate);
@@ -780,12 +852,25 @@ export function renderStatsCalendar() {
       if (btn.disabled || btn.classList.contains('is-past-empty')) return;
       const dateKey = btn.dataset.calDate;
       if (!dateKey) return;
+      // Clicking the already-open date collapses the detail drawer smoothly
+      if (statsCalendarState.detailOpen && statsCalendarState.selectedDateKey === dateKey) {
+        setCalendarDetailOpen(false);
+        return;
+      }
       const d = parseDateKeyLocal(dateKey);
+      const wasOpen = statsCalendarState.detailOpen;
       statsCalendarState.selectedDateKey = dateKey;
       statsCalendarState.year = d.getFullYear();
       statsCalendarState.month = d.getMonth();
-      statsCalendarState.detailOpen = true;
-      renderStatsCalendar();
+      if (!wasOpen) {
+        statsCalendarState.detailOpen = false;
+        renderStatsCalendarDayDetail(dateKey, dailyStats);
+        void statsCalDetailEl?.offsetHeight;
+        requestAnimationFrame(() => setCalendarDetailOpen(true));
+      } else {
+        renderStatsCalendarDayDetail(dateKey, dailyStats);
+        setCalendarDetailOpen(true);
+      }
     });
   });
 
@@ -795,11 +880,169 @@ export function renderStatsCalendar() {
   syncStatsPeriodButtonsUI();
 }
 
-export function switchStatsSubView(subView = 'calendar') {
-  const normalized = subView === 'trends' || subView === 'table' ? subView : 'calendar';
+export function renderStatsAchievements() {
+  if (!statsAchievementsViewEl) return;
+
+  const visibleAchievements = getActiveAchievements();
+  const passport = getJourneyPassportSummary();
+  const jr = ensureJourneyRewards();
+
+  const weekFlameHTML = passport.weekStrip
+    .map((day) => {
+      const cls = [
+        'journey-week-day',
+        day.lit ? 'is-lit' : '',
+        day.hit30m ? 'is-30m' : '',
+        day.isToday ? 'is-today' : '',
+        day.isFuture ? 'is-future' : ''
+      ]
+        .filter(Boolean)
+        .join(' ');
+      const statusMark = day.hit30m ? '30m' : day.lit ? 'Active' : day.isToday ? 'Today' : '—';
+      const tip = day.hit30m
+        ? `${day.label}: 30m goal reached`
+        : day.lit
+          ? `${day.label}: Active study logged`
+          : day.isToday
+            ? `${day.label}: Today`
+            : `${day.label}`;
+      return `
+        <div class="${cls}" title="${escapeHtmlText(tip)}">
+          <span class="journey-week-dot" aria-hidden="true"></span>
+          <span class="journey-week-label">${day.label}</span>
+          <span class="journey-week-status">${statusMark}</span>
+        </div>
+      `;
+    })
+    .join('');
+
+  const passportHeading = passport.learnerName
+    ? `${passport.learnerName}'s Profile`
+    : 'Profile';
+
+  const achievementsHTML = visibleAchievements
+    .map((ach) => {
+      const entry = jr.unlocked?.[ach.id];
+      const level = getAchievementLevel(ach);
+      const rawVal = Math.max(0, Number(ach.getValue()) || 0);
+      const isAchUnlocked = level >= 1;
+      const isMaxed = level >= 5;
+      const nextTarget = isMaxed ? ach.tiers[4] : ach.tiers[level];
+      const prevTarget = level > 0 ? ach.tiers[level - 1] : 0;
+      const barPct = isMaxed
+        ? 100
+        : Math.max(
+            0,
+            Math.min(100, Math.round(((rawVal - prevTarget) / Math.max(1, nextTarget - prevTarget)) * 100))
+          );
+      const valText = ach.formatValue ? ach.formatValue(rawVal) : formatAchievementTarget(rawVal);
+      const targetText = ach.formatTarget(nextTarget);
+      const progressText = `${valText} / ${targetText}`;
+      const statusLabel = isMaxed
+        ? entry?.dateKey
+          ? `Completed · ${formatDateKeyLabel(entry.dateKey)}`
+          : 'Completed'
+        : `Next: ${targetText}`;
+      const tierPipsHTML = ach.tiers
+        .map((tierTarget, idx) => {
+          const tierNum = idx + 1;
+          const pipCls =
+            tierNum <= level ? ' is-done' : tierNum === level + 1 ? ' is-next' : '';
+          return `<span class="achievement-tier-pip${pipCls}" title="${escapeHtmlText(ach.formatTarget(tierTarget))}">${escapeHtmlText(ach.formatTarget(tierTarget))}</span>`;
+        })
+        .join('');
+
+      const disp = getAchievementDisplay(ach);
+
+      return `
+        <div class="achievement-card${isAchUnlocked ? ' is-unlocked' : ''}${isMaxed ? ' is-maxed' : ''}">
+          <div class="achievement-card-body">
+            <div class="achievement-card-top">
+              <span class="achievement-card-title">${escapeHtmlText(disp.title)}</span>
+            </div>
+            <div class="achievement-card-desc">${escapeHtmlText(disp.desc)}</div>
+            <div class="achievement-progress-row">
+              <div class="achievement-progress-track" aria-hidden="true">
+                <div class="achievement-progress-fill" style="width: ${barPct}%"></div>
+              </div>
+              <span class="achievement-progress-text">${escapeHtmlText(progressText)}</span>
+            </div>
+            <div class="achievement-tiers">
+              ${tierPipsHTML}
+            </div>
+            <div class="achievement-card-status">${escapeHtmlText(statusLabel)}</div>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+
+  statsAchievementsViewEl.innerHTML = `
+    <div class="path-achievements-section" id="path-achievements-section">
+      <div class="journey-passport-card" id="journey-passport-card">
+        <div class="journey-passport-top">
+          <div class="journey-passport-identity">
+            <div class="journey-passport-titles">
+              <div class="journey-passport-heading">${escapeHtmlText(passportHeading)}</div>
+            </div>
+          </div>
+          <form id="passport-name-form" class="passport-name-form">
+            <input id="passport-name-input" class="passport-name-input" type="text" maxlength="28" placeholder="Your name..." value="${escapeHtmlText(passport.learnerName)}" aria-label="Profile name" />
+            <button type="submit" class="settings-test-btn passport-name-save-btn">Save</button>
+          </form>
+        </div>
+
+        <div class="journey-passport-stats">
+          <div class="journey-stat-pill">
+            <span class="journey-stat-num">${passport.currentStreak}d</span>
+            <span class="journey-stat-lbl">Current Streak</span>
+          </div>
+          <div class="journey-stat-pill">
+            <span class="journey-stat-num">${passport.totalDays}d</span>
+            <span class="journey-stat-lbl">Days Played</span>
+          </div>
+          <div class="journey-stat-pill">
+            <span class="journey-stat-num">${passport.thirtyMinDays}</span>
+            <span class="journey-stat-lbl">30m Goals</span>
+          </div>
+          <div class="journey-stat-pill">
+            <span class="journey-stat-num">${passport.maxedBadges}/${passport.totalBadges}</span>
+            <span class="journey-stat-lbl">Maxed</span>
+          </div>
+        </div>
+
+        <div class="journey-week-strip" aria-label="This week's activity">
+          ${weekFlameHTML}
+        </div>
+      </div>
+
+      <div class="path-achievements-grid">
+        ${achievementsHTML}
+      </div>
+    </div>
+  `;
+
+  const nameForm = document.getElementById('passport-name-form');
+  if (nameForm) {
+    nameForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const inp = document.getElementById('passport-name-input');
+      setLearnerName(inp ? inp.value : '');
+      renderStatsAchievements();
+    });
+  }
+}
+
+export function switchStatsSubView(subView = 'calendar', { immediate = false } = {}) {
+  const normalized =
+    subView === 'trends' || subView === 'table' || subView === 'achievements'
+      ? subView
+      : 'calendar';
+  const prevSubView = statsCalendarState.subView;
   const isCalendar = normalized === 'calendar';
   const isTrends = normalized === 'trends';
   const isTable = normalized === 'table';
+  const isAchievements = normalized === 'achievements';
   statsCalendarState.subView = normalized;
   if (isCalendar) {
     statsCalendarState.detailOpen = false;
@@ -820,31 +1063,82 @@ export function switchStatsSubView(subView = 'calendar') {
     statsTabTableBtn.classList.toggle('active', isTable);
     statsTabTableBtn.setAttribute('aria-pressed', String(isTable));
   }
-  if (statsCalendarViewEl) {
-    statsCalendarViewEl.classList.toggle('hidden', !isCalendar);
-  }
-  if (statsTrendsViewEl) {
-    statsTrendsViewEl.classList.toggle('hidden', !isTrends);
-  }
-  if (statsTableViewEl) {
-    statsTableViewEl.classList.toggle('hidden', !isTable);
+  if (statsTabAchievementsBtn) {
+    statsTabAchievementsBtn.classList.toggle('active', isAchievements);
+    statsTabAchievementsBtn.setAttribute('aria-pressed', String(isAchievements));
   }
 
-  if (isTable) {
-    buildStatsTable(true);
-  } else if (isTrends) {
-    renderStatsAnalyticsWidgets();
-  } else {
-    renderStatsCalendar();
+  const paneMap = {
+    calendar: statsCalendarViewEl,
+    trends: statsTrendsViewEl,
+    table: statsTableViewEl,
+    achievements: statsAchievementsViewEl
+  };
+  const incomingEl = paneMap[normalized];
+  const outgoingEls = Object.entries(paneMap)
+    .filter(([k, el]) => k !== normalized && el)
+    .map(([, el]) => el);
+
+  const renderIncoming = () => {
+    if (isTable) {
+      buildStatsTable(true);
+    } else if (isTrends) {
+      renderStatsAnalyticsWidgets();
+    } else if (isAchievements) {
+      renderStatsAchievements();
+    } else {
+      renderStatsCalendar();
+    }
+  };
+
+  if (statsSubViewFadeTimer !== null) {
+    clearTimeout(statsSubViewFadeTimer);
+    statsSubViewFadeTimer = null;
   }
+
+  if (immediate || prevSubView === normalized || !incomingEl) {
+    outgoingEls.forEach((el) => {
+      el.classList.remove('is-fading-out');
+      el.classList.add('hidden');
+    });
+    if (incomingEl) {
+      incomingEl.classList.remove('hidden', 'is-fading-out');
+    }
+    renderIncoming();
+    return;
+  }
+
+  outgoingEls.forEach((el) => {
+    if (!el.classList.contains('hidden')) {
+      el.classList.add('is-fading-out');
+    }
+  });
+
+  statsSubViewFadeTimer = setTimeout(() => {
+    statsSubViewFadeTimer = null;
+    outgoingEls.forEach((el) => {
+      el.classList.add('hidden');
+      el.classList.remove('is-fading-out');
+    });
+    incomingEl.classList.add('is-fading-out');
+    incomingEl.classList.remove('hidden');
+    renderIncoming();
+    void incomingEl.offsetWidth;
+    incomingEl.classList.remove('is-fading-out');
+  }, FADE_SWAP_MS);
 }
 
 function buildDateRangeKeys(startDateObj, endDateObj) {
+  const MAX_RANGE_DAYS = 1500;
   const keys = [];
-  const cursor = new Date(startDateObj.getFullYear(), startDateObj.getMonth(), startDateObj.getDate());
   const end = new Date(endDateObj.getFullYear(), endDateObj.getMonth(), endDateObj.getDate());
+  const cursor = new Date(startDateObj.getFullYear(), startDateObj.getMonth(), startDateObj.getDate());
+  const minStart = new Date(end.getFullYear(), end.getMonth(), end.getDate() - (MAX_RANGE_DAYS - 1));
+  if (cursor < minStart) {
+    cursor.setTime(minStart.getTime());
+  }
   let guard = 0;
-  while (cursor <= end && guard < 1500) {
+  while (cursor <= end && guard < MAX_RANGE_DAYS) {
     keys.push(getLocalDateKey(cursor));
     cursor.setDate(cursor.getDate() + 1);
     guard += 1;
@@ -922,7 +1216,7 @@ export function renderStatsAnalyticsWidgets() {
 
   const activeTrend = VALID_STATS_TRENDS.includes(statsCalendarState.activeTrend)
     ? statsCalendarState.activeTrend
-    : 'pronunciation';
+    : 'timeSpent';
 
   const today = new Date();
   const todayKey = getLocalDateKey(today);
@@ -1308,9 +1602,9 @@ export function renderStatsAnalyticsWidgets() {
           ${periodNavHTML}
         </div>
         <div class="trend-switcher" role="group" aria-label="Switch trend">
-          <button type="button" class="trend-switch-btn${activeTrend === 'pronunciation' ? ' active' : ''}" data-trend="pronunciation" aria-pressed="${activeTrend === 'pronunciation'}">Pronunciation</button>
-          <button type="button" class="trend-switch-btn${activeTrend === 'newWords' ? ' active' : ''}" data-trend="newWords" aria-pressed="${activeTrend === 'newWords'}">New Words</button>
           <button type="button" class="trend-switch-btn${activeTrend === 'timeSpent' ? ' active' : ''}" data-trend="timeSpent" aria-pressed="${activeTrend === 'timeSpent'}">Time Spent</button>
+          <button type="button" class="trend-switch-btn${activeTrend === 'newWords' ? ' active' : ''}" data-trend="newWords" aria-pressed="${activeTrend === 'newWords'}">New Words</button>
+          <button type="button" class="trend-switch-btn${activeTrend === 'pronunciation' ? ' active' : ''}" data-trend="pronunciation" aria-pressed="${activeTrend === 'pronunciation'}">Pronunciation</button>
         </div>
       </div>
       ${trendBodyHTML}
@@ -1400,11 +1694,6 @@ export function updateStatsInsight() {
     }
   }
 
-  const drillPolishBtn = document.getElementById('drill-polish-pron-btn');
-  if (drillPolishBtn) {
-    const scopePron = getOverallPronunciationStats(catFilter);
-    drillPolishBtn.classList.toggle('hidden', scopePron.improveWords <= 0);
-  }
   if (evaluated.length === 0) {
     statsInsightEl.textContent = '';
     statsInsightEl.classList.add('hidden');
@@ -1575,6 +1864,7 @@ export function buildStatsTable(animate = true) {
       }
       rawRows.push({
         key: item.id,
+        catId,
         item,
         variationCount,
         practicedVariations,
@@ -1587,11 +1877,41 @@ export function buildStatsTable(animate = true) {
     });
   });
 
-  const practicedBaseCount = rawRows.filter(
-    (r) => (Number(r.entry.correct) || 0) + (Number(r.entry.incorrect) || 0) > 0
-  ).length;
+  const isBannedScope = statsCalendarState.tableScope === 'banned';
+  const curSeq = Number(state.sessionQuestionSeq) || 0;
+  const getActiveBanRemaining = (row) => {
+    const baseKey = row.item ? `${row.catId}:${row.key}` : `numbers:${row.key}`;
+    const untilSeq = Number(state.skipCooldownUntilByKey?.[baseKey]) || 0;
+    return untilSeq > curSeq ? untilSeq - curSeq : 0;
+  };
+  const isRowFlaggedBanned = (row) => {
+    const e = row.entry || {};
+    const c = Number(e.correct) || 0;
+    const inc = Number(e.incorrect) || 0;
+    const sk = Number(e.skipped) || 0;
+    const bans = Number(e.banCount) || 0;
+    const total = c + inc;
+    const pct = total > 0 ? Math.round((c / total) * 100) : 100;
+    return (
+      getActiveBanRemaining(row) > 0 ||
+      bans >= 1 ||
+      sk >= 2 ||
+      inc >= 3 ||
+      (total >= 3 && pct < 65)
+    );
+  };
+
+  const displayRows = isBannedScope ? rawRows.filter(isRowFlaggedBanned) : rawRows;
+
+  const practicedBaseCount = isBannedScope
+    ? displayRows.length
+    : rawRows.filter(
+        (r) => (Number(r.entry.correct) || 0) + (Number(r.entry.incorrect) || 0) + (Number(r.entry.skipped) || 0) > 0
+      ).length;
   if (statsBaseCountBadgeEl) {
-    statsBaseCountBadgeEl.textContent = `${practicedBaseCount} practiced`;
+    statsBaseCountBadgeEl.textContent = isBannedScope
+      ? `${displayRows.length} flagged`
+      : `${practicedBaseCount} practiced`;
   }
 
   const hasAnyData = practicedBaseCount > 0;
@@ -1600,6 +1920,12 @@ export function buildStatsTable(animate = true) {
     statsTbodyEl.innerHTML = '';
     statsTableWrapEl.classList.add('hidden');
     statsEmptyStateEl.classList.remove('hidden');
+    const emptyTitleEl = statsEmptyStateEl.querySelector('.stats-empty-title');
+    if (emptyTitleEl) {
+      emptyTitleEl.textContent = isBannedScope
+        ? 'No banned or frequently skipped words yet.'
+        : 'No recorded answers yet.';
+    }
     sortHeaderBtns.forEach((b) => {
       b.disabled = true;
     });
@@ -1617,7 +1943,17 @@ export function buildStatsTable(animate = true) {
   const { recordSortKey, recordSortDir } = state;
   const dirMult = recordSortDir === 'asc' ? 1 : -1;
 
-  rawRows.sort((a, b) => {
+  displayRows.sort((a, b) => {
+    if (isBannedScope && recordSortKey === 'number') {
+      const banRemDiff = getActiveBanRemaining(b) - getActiveBanRemaining(a);
+      if (banRemDiff !== 0) return banRemDiff;
+      const banCntDiff = (Number(b.entry.banCount) || 0) - (Number(a.entry.banCount) || 0);
+      if (banCntDiff !== 0) return banCntDiff;
+      const skipDiff = (Number(b.entry.skipped) || 0) - (Number(a.entry.skipped) || 0);
+      if (skipDiff !== 0) return skipDiff;
+      const incDiff = (Number(b.entry.incorrect) || 0) - (Number(a.entry.incorrect) || 0);
+      if (incDiff !== 0) return incDiff;
+    }
     const entryA = a.entry;
     const entryB = b.entry;
     let valA = a.sortOrder;
@@ -1629,6 +1965,9 @@ export function buildStatsTable(animate = true) {
     } else if (recordSortKey === 'incorrect') {
       valA = entryA.incorrect || 0;
       valB = entryB.incorrect || 0;
+    } else if (recordSortKey === 'skipped') {
+      valA = entryA.skipped || 0;
+      valB = entryB.skipped || 0;
     } else if (recordSortKey === 'pct') {
       valA = getPctValue(entryA.correct || 0, entryA.incorrect || 0);
       valB = getPctValue(entryB.correct || 0, entryB.incorrect || 0);
@@ -1650,10 +1989,17 @@ export function buildStatsTable(animate = true) {
   });
 
   statsTbodyEl.innerHTML = '';
-  rawRows.forEach((row, idx) => {
+  displayRows.forEach((row, idx) => {
     const entry = row.entry;
     const c = Number(entry.correct) || 0;
     const inc = Number(entry.incorrect) || 0;
+    const skipped = Math.max(0, Math.floor(Number(entry.skipped) || 0));
+    const activeBanRem = getActiveBanRemaining(row);
+    const banPillHTML = activeBanRem > 0
+      ? `<span class="stats-banned-pill" title="Banned for the next ${activeBanRem} question${activeBanRem === 1 ? '' : 's'}">Banned · ${activeBanRem}q</span>`
+      : (Number(entry.banCount) || 0) > 0
+        ? `<span class="stats-banned-pill" title="Previously banned ${entry.banCount} time${entry.banCount === 1 ? '' : 's'}">Banned ×${entry.banCount}</span>`
+        : '';
     const conf = getConfidenceTierInfo(row.key);
     entry.confidence = conf.label;
     const tr = document.createElement('tr');
@@ -1680,21 +2026,19 @@ export function buildStatsTable(animate = true) {
               <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
             </svg>
           </span>`;
-    const pronBadgeHTML = pron.statusTag
-      ? ` <span class="pron-status-badge ${pron.tierCls}">${escapeHtmlText(pron.statusTag)}</span>`
-      : '';
     const hasVariations = Boolean(row.item && row.variationCount > 1);
     const isDrawerOpen = hasVariations && openStatsFillItemIds.has(row.key);
     const varPillHTML = hasVariations
       ? `<div class="stats-var-pill-wrap"><button type="button" class="vocab-var-pill stats-var-pill${isDrawerOpen ? ' is-open' : ''}" data-toggle-stats-fills="${escapeHtmlText(row.key)}" aria-expanded="${isDrawerOpen}">${row.practicedVariations}/${row.variationCount} ${row.variationKind === 'options' ? 'options' : 'variations'} ${isDrawerOpen ? '▴' : '▾'}</button></div>`
       : '';
     tr.innerHTML = `
-      <td class="stats-item-cell">${escapeHtmlText(row.col1)}${varPillHTML}</td>
+      <td class="stats-item-cell">${escapeHtmlText(row.col1)}${banPillHTML}${varPillHTML}</td>
       <td>${escapeHtmlText(row.col2)}</td>
       <td class="num-col stats-correct-cell" data-role="correct">${c}</td>
       <td class="num-col stats-incorrect-cell" data-role="incorrect">${inc}</td>
+      <td class="num-col stats-skipped-cell" data-role="skipped">${skipped}</td>
       <td class="num-col" data-role="pct">${formatPercent(c, inc)}</td>
-      <td class="num-col stats-pronunciation-cell ${pron.tierCls}" data-role="pronunciation" title="${escapeHtmlText(pron.title)}">${escapeHtmlText(pron.text)}${pronBadgeHTML}</td>
+      <td class="num-col stats-pronunciation-cell ${pron.tierCls}" data-role="pronunciation" title="${escapeHtmlText(pron.title)}">${escapeHtmlText(pron.text)}</td>
       <td class="num-col stats-trophy-cell" data-role="trophy">${trophyHTML}</td>
     `;
     statsTbodyEl.appendChild(tr);
@@ -1703,7 +2047,7 @@ export function buildStatsTable(animate = true) {
       const drawerTr = document.createElement('tr');
       drawerTr.className = 'stats-fills-drawer-row';
       drawerTr.dataset.statsFillsFor = String(row.key);
-      drawerTr.innerHTML = `<td colspan="7">${buildStatsFillDrawerHTML(row.item, row.variationKind)}</td>`;
+      drawerTr.innerHTML = `<td colspan="8">${buildStatsFillDrawerHTML(row.item, row.variationKind)}</td>`;
       statsTbodyEl.appendChild(drawerTr);
     }
   });
@@ -1729,12 +2073,17 @@ export function syncStatsTableScopeUI() {
     statsScopeExtensionsBtn.classList.toggle('active', active);
     statsScopeExtensionsBtn.setAttribute('aria-pressed', String(active));
   }
+  if (statsScopeBannedBtn) {
+    const active = scope === 'banned';
+    statsScopeBannedBtn.classList.toggle('active', active);
+    statsScopeBannedBtn.setAttribute('aria-pressed', String(active));
+  }
   if (statsBaseSectionEl) {
     statsBaseSectionEl.classList.toggle('hidden', scope === 'extensions');
-    statsBaseSectionEl.classList.toggle('is-sole-table', scope === 'base');
+    statsBaseSectionEl.classList.toggle('is-sole-table', scope === 'base' || scope === 'banned');
   }
   if (statsExtensionsSectionEl) {
-    statsExtensionsSectionEl.classList.toggle('hidden', scope === 'base');
+    statsExtensionsSectionEl.classList.toggle('hidden', scope === 'base' || scope === 'banned');
     statsExtensionsSectionEl.classList.toggle('is-sole-table', scope === 'extensions');
   }
 }
@@ -1822,6 +2171,7 @@ export function buildExtensionsStatsTable(animate = true) {
     const entry = row.entry;
     const c = Number(entry.correct) || 0;
     const inc = Number(entry.incorrect) || 0;
+    const skipped = Math.max(0, Math.floor(Number(entry.skipped) || 0));
     const tr = document.createElement('tr');
     tr.dataset.extKey = row.key;
     if (animate) {
@@ -1846,16 +2196,13 @@ export function buildExtensionsStatsTable(animate = true) {
               <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
             </svg>
           </span>`;
-    const pronBadgeHTML = pron.statusTag
-      ? ` <span class="pron-status-badge ${pron.tierCls}">${escapeHtmlText(pron.statusTag)}</span>`
-      : '';
     tr.innerHTML = `
       <td class="stats-item-cell">${escapeHtmlText(row.col1)}</td>
       <td>${escapeHtmlText(row.col2)}</td>
       <td class="num-col stats-correct-cell" data-role="correct">${c}</td>
       <td class="num-col stats-incorrect-cell" data-role="incorrect">${inc}</td>
       <td class="num-col" data-role="pct">${formatPercent(c, inc)}</td>
-      <td class="num-col stats-pronunciation-cell ${pron.tierCls}" data-role="pronunciation" title="${escapeHtmlText(pron.title)}">${escapeHtmlText(pron.text)}${pronBadgeHTML}</td>
+      <td class="num-col stats-pronunciation-cell ${pron.tierCls}" data-role="pronunciation" title="${escapeHtmlText(pron.title)}">${escapeHtmlText(pron.text)}</td>
       <td class="num-col stats-trophy-cell" data-role="trophy">${trophyHTML}</td>
     `;
     statsExtensionsTbodyEl.appendChild(tr);
@@ -1959,20 +2306,32 @@ export function initStatsView() {
 
   if (statsScopeBothBtn) {
     statsScopeBothBtn.addEventListener('click', () => {
+      const wasBanned = statsCalendarState.tableScope === 'banned';
       statsCalendarState.tableScope = 'both';
-      syncStatsTableScopeUI();
+      if (wasBanned) buildStatsTable(false);
+      else syncStatsTableScopeUI();
     });
   }
   if (statsScopeBaseBtn) {
     statsScopeBaseBtn.addEventListener('click', () => {
+      const wasBanned = statsCalendarState.tableScope === 'banned';
       statsCalendarState.tableScope = 'base';
-      syncStatsTableScopeUI();
+      if (wasBanned) buildStatsTable(false);
+      else syncStatsTableScopeUI();
     });
   }
   if (statsScopeExtensionsBtn) {
     statsScopeExtensionsBtn.addEventListener('click', () => {
+      const wasBanned = statsCalendarState.tableScope === 'banned';
       statsCalendarState.tableScope = 'extensions';
-      syncStatsTableScopeUI();
+      if (wasBanned) buildStatsTable(false);
+      else syncStatsTableScopeUI();
+    });
+  }
+  if (statsScopeBannedBtn) {
+    statsScopeBannedBtn.addEventListener('click', () => {
+      statsCalendarState.tableScope = 'banned';
+      buildStatsTable(false);
     });
   }
 
@@ -1985,48 +2344,56 @@ export function initStatsView() {
   if (statsTabTableBtn) {
     statsTabTableBtn.addEventListener('click', () => switchStatsSubView('table'));
   }
+  if (statsTabAchievementsBtn) {
+    statsTabAchievementsBtn.addEventListener('click', () => switchStatsSubView('achievements'));
+  }
   if (statsCalDetailEl) {
     statsCalDetailEl.addEventListener('click', () => {
       if (!statsCalendarState.detailOpen) {
-        statsCalendarState.detailOpen = true;
-        renderStatsCalendar();
+        setCalendarDetailOpen(true);
       }
     });
   }
   if (calPrevMonthBtn) {
     calPrevMonthBtn.addEventListener('click', () => {
-      if (statsCalendarState.detailOpen) {
-        const d = parseDateKeyLocal(statsCalendarState.selectedDateKey);
-        d.setDate(d.getDate() - 7);
-        statsCalendarState.selectedDateKey = getLocalDateKey(d);
-        statsCalendarState.year = d.getFullYear();
-        statsCalendarState.month = d.getMonth();
-      } else {
-        statsCalendarState.month -= 1;
-        if (statsCalendarState.month < 0) {
-          statsCalendarState.month = 11;
-          statsCalendarState.year -= 1;
+      const calRegionEl = statsCalendarViewEl?.querySelector('.stats-cal-top-region');
+      fadeSwapElement(calRegionEl, 'period', () => {
+        if (statsCalendarState.calendarMode === 'week') {
+          const d = parseDateKeyLocal(statsCalendarState.selectedDateKey);
+          d.setDate(d.getDate() - 7);
+          statsCalendarState.selectedDateKey = getLocalDateKey(d);
+          statsCalendarState.year = d.getFullYear();
+          statsCalendarState.month = d.getMonth();
+        } else {
+          statsCalendarState.month -= 1;
+          if (statsCalendarState.month < 0) {
+            statsCalendarState.month = 11;
+            statsCalendarState.year -= 1;
+          }
         }
-      }
-      renderStatsCalendar();
+        renderStatsCalendar();
+      });
     });
   }
   if (calNextMonthBtn) {
     calNextMonthBtn.addEventListener('click', () => {
-      if (statsCalendarState.detailOpen) {
-        const d = parseDateKeyLocal(statsCalendarState.selectedDateKey);
-        d.setDate(d.getDate() + 7);
-        statsCalendarState.selectedDateKey = getLocalDateKey(d);
-        statsCalendarState.year = d.getFullYear();
-        statsCalendarState.month = d.getMonth();
-      } else {
-        statsCalendarState.month += 1;
-        if (statsCalendarState.month > 11) {
-          statsCalendarState.month = 0;
-          statsCalendarState.year += 1;
+      const calRegionEl = statsCalendarViewEl?.querySelector('.stats-cal-top-region');
+      fadeSwapElement(calRegionEl, 'period', () => {
+        if (statsCalendarState.calendarMode === 'week') {
+          const d = parseDateKeyLocal(statsCalendarState.selectedDateKey);
+          d.setDate(d.getDate() + 7);
+          statsCalendarState.selectedDateKey = getLocalDateKey(d);
+          statsCalendarState.year = d.getFullYear();
+          statsCalendarState.month = d.getMonth();
+        } else {
+          statsCalendarState.month += 1;
+          if (statsCalendarState.month > 11) {
+            statsCalendarState.month = 0;
+            statsCalendarState.year += 1;
+          }
         }
-      }
-      renderStatsCalendar();
+        renderStatsCalendar();
+      });
     });
   }
   if (calMonthLabelEl) {
@@ -2058,9 +2425,15 @@ export function initStatsView() {
         setStatsTrendPeriod('week');
         return;
       }
-      statsCalendarState.detailOpen = true;
+      if (statsCalendarState.calendarMode === 'week' && !statsCalendarState.detailOpen) return;
+      statsCalendarState.calendarMode = 'week';
+      statsCalendarState.detailOpen = false;
       statsCalendarState.pickerOpen = false;
-      renderStatsCalendar();
+      syncStatsPeriodButtonsUI();
+      const calRegionEl = statsCalendarViewEl?.querySelector('.stats-cal-top-region');
+      fadeSwapElement(calRegionEl, 'period', () => {
+        renderStatsCalendar();
+      });
     });
   }
   if (statsPeriodMonthBtn) {
@@ -2069,9 +2442,15 @@ export function initStatsView() {
         setStatsTrendPeriod('month');
         return;
       }
+      if (statsCalendarState.calendarMode === 'month' && !statsCalendarState.detailOpen) return;
+      statsCalendarState.calendarMode = 'month';
       statsCalendarState.detailOpen = false;
       statsCalendarState.pickerOpen = false;
-      renderStatsCalendar();
+      syncStatsPeriodButtonsUI();
+      const calRegionEl = statsCalendarViewEl?.querySelector('.stats-cal-top-region');
+      fadeSwapElement(calRegionEl, 'period', () => {
+        renderStatsCalendar();
+      });
     });
   }
   if (drillWeakWordsBtn) {
@@ -2168,12 +2547,6 @@ export function initStatsView() {
         const tipEl = document.getElementById('stats-trend-tooltip');
         if (tipEl) tipEl.classList.add('hidden');
       }
-    });
-  }
-  const drillPolishBtn = document.getElementById('drill-polish-pron-btn');
-  if (drillPolishBtn) {
-    drillPolishBtn.addEventListener('click', () => {
-      statsViewHooks.onStartPolishDrill();
     });
   }
 }

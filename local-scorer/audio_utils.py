@@ -92,12 +92,13 @@ def decode_to_16k_mono(raw_bytes: bytes) -> tuple[np.ndarray, str]:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=True,
+            timeout=15,
         )
         usable_len = len(proc.stdout) - (len(proc.stdout) % 4)
         if usable_len >= 4:
             audio = np.frombuffer(proc.stdout[:usable_len], dtype=np.float32).copy()
             if audio.size > 0:
-                return audio, "pipe"
+                return np.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32, copy=False), "pipe"
     except Exception:
         pass
 
@@ -112,11 +113,13 @@ def decode_to_16k_mono(raw_bytes: bytes) -> tuple[np.ndarray, str]:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=True,
+            timeout=15,
         )
         audio, _ = sf.read(out_path, dtype="float32")
         if audio.ndim > 1:
             audio = np.mean(audio, axis=1).astype(np.float32)
-        return np.asarray(audio, dtype=np.float32), "tempfile"
+        clean_audio = np.nan_to_num(np.asarray(audio, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+        return clean_audio.astype(np.float32, copy=False), "tempfile"
     finally:
         for p in (in_path, out_path):
             if os.path.exists(p):
@@ -127,6 +130,7 @@ def decode_to_16k_mono(raw_bytes: bytes) -> tuple[np.ndarray, str]:
 
 
 def compute_audio_stats(wav: np.ndarray, sr: int = 16000) -> dict:
+    wav = np.nan_to_num(np.asarray(wav, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
     sample_count = int(len(wav))
     duration_ms = round((sample_count / float(sr)) * 1000.0, 1)
     abs_wav = np.abs(wav) if sample_count > 0 else np.empty(0, dtype=np.float32)
@@ -303,8 +307,8 @@ def preprocess_audio(
     then optionally applies an 80 Hz high-pass rumble filter, trims dead silence,
     and applies gentle Auto-Gain Control.
     """
-    stats = compute_audio_stats(raw_wav, sr=sr)
-    wav = np.asarray(raw_wav, dtype=np.float32)
+    wav = np.nan_to_num(np.asarray(raw_wav, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+    stats = compute_audio_stats(wav, sr=sr)
 
     if enable_highpass:
         wav = highpass_filter_80hz(wav, sr=sr, cutoff_hz=80.0)

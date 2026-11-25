@@ -132,6 +132,8 @@ export function createDefaultItemEntry() {
   return {
     correct: 0,
     incorrect: 0,
+    skipped: 0,
+    banCount: 0,
     byDate: {},
     streaks: createDefaultSkillStreaks(),
     seenSkills: createDefaultSeenSkills(),
@@ -213,6 +215,8 @@ export function normalizePhraseCounts(raw) {
     if (!PHRASE_ITEM_MAP.has(itemId) || !entry || typeof entry !== 'object') return;
     const correct = Math.max(0, Math.floor(Number(entry.correct) || 0));
     const incorrect = Math.max(0, Math.floor(Number(entry.incorrect) || 0));
+    const skipped = Math.max(0, Math.floor(Number(entry.skipped) || 0));
+    const banCount = Math.max(0, Math.floor(Number(entry.banCount) || 0));
     const streaks = normalizeSkillStreaks(entry.streaks, correct);
     const seenSkills = normalizeSeenSkills(entry.seenSkills, streaks);
     const blockedUntil = Math.max(0, Number(entry.blockedUntil) || 0);
@@ -232,7 +236,7 @@ export function normalizePhraseCounts(raw) {
       });
     }
     if (
-      correct + incorrect > 0 ||
+      correct + incorrect + skipped + banCount > 0 ||
       Object.keys(byDate).length > 0 ||
       streaks.read + streaks.write + streaks.listen + streaks.speak > 0 ||
       SKILL_PILLARS.some((k) => seenSkills[k]) ||
@@ -241,6 +245,8 @@ export function normalizePhraseCounts(raw) {
       normalized[itemId] = {
         correct,
         incorrect,
+        skipped,
+        banCount,
         byDate,
         streaks,
         seenSkills,
@@ -464,6 +470,8 @@ export function normalizeCountsMap(rawCounts, fallbackDateKey) {
     counts[n] = {
       correct: c,
       incorrect: inc,
+      skipped: Math.max(0, Math.floor(Number(entry.skipped) || 0)),
+      banCount: Math.max(0, Math.floor(Number(entry.banCount) || 0)),
       byDate,
       streaks: normalizedStreaks,
       seenSkills: normalizeSeenSkills(entry.seenSkills, normalizedStreaks),
@@ -678,8 +686,6 @@ export function createDefaultPersistedData() {
   return {
     ...speakOnly,
     speakOnlyMode: true,
-    theme: 'dark',
-    blurLockedContent: true,
     autoplay: true,
     speed: 1,
     dailyGoal: DAILY_CORRECT_GOAL,
@@ -690,17 +696,7 @@ export function createDefaultPersistedData() {
     speechRate: 1,
     micDeviceId: '',
     pronunciationEngine: 'local',
-    scoringThreshold: 90,
-    handsFreeVad: false,
     handsFreeReadPrompt: true,
-    handsFreeSilenceMs: 1300,
-    handsFreeIncorrectPolicy: 'auto-retry',
-    handsFreeEarcons: true,
-    handsFreeCooldownMs: 350,
-    handsFreePauseOnStage: false,
-    shadowingMode: false,
-    pushToTalk: true,
-    ttsEngine: 'browser',
     strictAccents: false,
     needsInitialSave: false
   };
@@ -737,8 +733,6 @@ export function loadPersistedData() {
     return {
       ...spkRes.profile,
       speakOnlyMode: true,
-      theme: parsed.theme === 'light' ? 'light' : 'dark',
-      blurLockedContent: parsed.blurLockedContent !== false,
       autoplay: parsed.autoplay !== false,
       speed: !Number.isNaN(parsedSpeed) && parsedSpeed > 0 ? parsedSpeed : 1,
       volume:
@@ -760,26 +754,8 @@ export function loadPersistedData() {
       dailyGoal: DAILY_CORRECT_GOAL,
       speechRate: 1,
       micDeviceId: typeof parsed.micDeviceId === 'string' ? parsed.micDeviceId : '',
-      pronunciationEngine: parsed.pronunciationEngine === 'browser' ? 'browser' : 'local',
-      scoringThreshold: [70, 80, 90].includes(Number(parsed.scoringThreshold))
-        ? Number(parsed.scoringThreshold)
-        : 90,
-      handsFreeVad: Boolean(parsed.handsFreeVad),
+      pronunciationEngine: 'local',
       handsFreeReadPrompt: parsed.handsFreeReadPrompt !== false,
-      handsFreeSilenceMs: [900, 1300, 1800, 2400].includes(Number(parsed.handsFreeSilenceMs))
-        ? Number(parsed.handsFreeSilenceMs)
-        : 1300,
-      handsFreeIncorrectPolicy: ['auto-retry', 'voice-choice', 'auto-continue'].includes(parsed.handsFreeIncorrectPolicy)
-        ? parsed.handsFreeIncorrectPolicy
-        : 'auto-retry',
-      handsFreeEarcons: parsed.handsFreeEarcons !== false,
-      handsFreeCooldownMs: [250, 350, 550].includes(Number(parsed.handsFreeCooldownMs))
-        ? Number(parsed.handsFreeCooldownMs)
-        : 350,
-      handsFreePauseOnStage: Boolean(parsed.handsFreePauseOnStage),
-      shadowingMode: Boolean(parsed.shadowingMode),
-      pushToTalk: parsed.pushToTalk !== false,
-      ttsEngine: parsed.ttsEngine === 'local' ? 'local' : 'browser',
       strictAccents: false,
       needsInitialSave: spkRes.migrated
     };

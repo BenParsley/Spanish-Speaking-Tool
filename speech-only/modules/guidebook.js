@@ -18,9 +18,6 @@ import {
   answerInputEl,
   categoryNavEl,
   hudStageTitleEl,
-  stageEducateBtn,
-  stageEducateLabelEl,
-  stageEducateNewBadgeEl,
   subjectCompleteModalBackdropEl,
   topicEducateBodyEl,
   topicEducateCloseXBtn,
@@ -30,35 +27,40 @@ import {
   topicEducateTitleEl
 } from './dom.js';
 import {
-  getProgressionSnapshot,
-  getStageMasteryStatus,
   getStageVocabRows,
   skipStageInProgression
 } from './progression.js';
 import {
   getActiveSkillPillars,
-  isCategoryCompleted,
   isCategoryUnlocked,
+  isTrackingDisabled,
   savePersistedData,
   state
 } from './state.js';
 import { normalizeSeenSkills } from './tracking-schema.js';
 import { escapeHtmlText } from './utils.js';
 
-let openCategoryDropdownId = null;
-let openDropdownTopicId = null;
-let openDropdownStageKey = null;
 let openVocabFillItemIds = new Set();
 let guidebookJumpTimers = [];
 let activeTopicEducateCatId = null;
 let pendingWordIntroData = null;
 let pendingSkipStageTarget = null;
+const untrackedSeenTopicGuides = new Set();
+const untrackedIntroducedItems = new Set();
+
+export function clearUntrackedGuidebookSession() {
+  untrackedSeenTopicGuides.clear();
+  untrackedIntroducedItems.clear();
+}
 
 let guidebookHooks = {
   onCloseSettingsPopover: () => { },
   getSpokenText: () => '',
   onSlotChoiceChanged: () => { },
-  isHandsFreeRunning: () => false
+  isHandsFreeRunning: () => false,
+  onOpenGuidebookView: () => { },
+  onOpenGuidebookToCurrentStage: () => { },
+  onAfterSkipStage: () => { }
 };
 
 export function toggleVocabFillDrawer(itemId) {
@@ -78,9 +80,6 @@ export function clearGuidebookJumpTimers() {
 
 export function resetGuidebookState() {
   clearGuidebookJumpTimers();
-  openCategoryDropdownId = null;
-  openDropdownTopicId = null;
-  openDropdownStageKey = null;
   openVocabFillItemIds.clear();
   activeTopicEducateCatId = null;
   if (topicEducateModalBackdropEl) topicEducateModalBackdropEl.classList.add('hidden');
@@ -99,6 +98,38 @@ export function buildUnitGrammarCardHTML(unitMeta) {
       <ul class="a1-grammar-list">
         ${unitMeta.grammarRules.map((rule) => `<li>${escapeHtmlText(rule)}</li>`).join('')}
       </ul>
+    </div>
+  `;
+}
+
+export function buildUnitTopicRulesHTML(unitId) {
+  const content = getTopicEducateContent(unitId);
+  if (!content.hasRules) {
+    return buildUnitGrammarCardHTML(CATEGORIES[unitId]);
+  }
+  const isNew = isUserNewToTopic(unitId);
+  const focusHTML = content.currentStageFocus
+    ? `<div class="guidebook-rules-focus"><strong>Current focus:</strong> ${escapeHtmlText(content.currentStageFocus)}</div>`
+    : '';
+  const rulesListHTML =
+    content.rules.length > 0
+      ? `<ul class="a1-grammar-list">${content.rules.map((rule) => `<li>${escapeHtmlText(rule)}</li>`).join('')}</ul>`
+      : '';
+  return `
+    <div class="a1-grammar-card guidebook-topic-rules-card">
+      <div class="guidebook-topic-rules-header">
+        <span class="a1-grammar-title guidebook-topic-rules-title">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+          </svg>
+          <span>Topic Rules</span>
+          ${isNew ? '<span class="stage-educate-new-badge">New</span>' : ''}
+        </span>
+        <button type="button" class="stage-intro-toggle-btn guidebook-topic-rules-btn" data-open-topic-rules="${escapeHtmlText(unitId)}" title="Open full Topic Rules &amp; example patterns for ${escapeHtmlText(CATEGORIES[unitId]?.label || 'this unit')}">Open Rules</button>
+      </div>
+      ${focusHTML}
+      ${rulesListHTML}
     </div>
   `;
 }
@@ -175,10 +206,6 @@ export function buildStageVocabTableHTML(catId, stageIndex) {
               : 'is-low';
         indicatorHTML = `<span class="stage-vocab-meter ${toneCls}" aria-hidden="true"><span class="stage-vocab-meter-fill" style="width: ${accPct}%"></span></span>`;
       }
-      const isWordIntroOff = r.introKey && state.skippedIntroWords?.has(r.introKey);
-      const introBtnHTML = r.introKey
-        ? `<button type="button" class="stage-vocab-intro-btn${isWordIntroOff ? ' is-off' : ''}" data-toggle-word-intro="${escapeHtmlText(r.introKey)}" title="Toggle new-word introduction popup for this item">${isWordIntroOff ? 'Intro Off' : 'Intro On'}</button>`
-        : '';
       const hasVariations = Boolean(r.itemId && r.variationCount > 1);
       const isDrawerOpen = hasVariations && openVocabFillItemIds.has(r.itemId);
       const varPillHTML = hasVariations
@@ -187,10 +214,14 @@ export function buildStageVocabTableHTML(catId, stageIndex) {
       const drawerRowHTML = isDrawerOpen
         ? `<tr class="vocab-fills-drawer-row" data-vocab-fills-for="${escapeHtmlText(r.itemId)}"><td colspan="2">${buildVocabFillDrawerHTML(r.item, r.variationKind)}</td></tr>`
         : '';
+      const spokenEs = r.item ? getSpeakableSpanishForItem(r.item) : r.es;
+      const speakBtnHTML = spokenEs
+        ? `<button type="button" class="learn-audio-play-btn" data-speak-es="${escapeHtmlText(spokenEs)}" aria-label="Listen to ${escapeHtmlText(spokenEs)}" title="Hear pronunciation"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /></svg></button>`
+        : '';
       return `
       <tr${rowCls}${rowTitle}>
-        <td class="stage-vocab-es">${escapeHtmlText(r.es)}</td>
-        <td class="stage-vocab-en"><div class="stage-vocab-en-inner"><span>${escapeHtmlText(r.en)}</span><span class="stage-vocab-en-actions">${varPillHTML}${indicatorHTML}${introBtnHTML}</span></div></td>
+        <td class="stage-vocab-es"><div class="stage-vocab-es-inner">${speakBtnHTML}<span>${escapeHtmlText(r.es)}</span></div></td>
+        <td class="stage-vocab-en"><div class="stage-vocab-en-inner"><span>${escapeHtmlText(r.en)}</span><span class="stage-vocab-en-actions">${varPillHTML}${indicatorHTML}</span></div></td>
       </tr>
       ${drawerRowHTML}
     `;
@@ -214,420 +245,48 @@ export function buildStageVocabTableHTML(catId, stageIndex) {
   `;
 }
 
-function finalizeCloseCategoryDropdown() {
-  const pop = document.getElementById('category-dropdown-popover');
-  const completeClose = () => {
-    openCategoryDropdownId = null;
-    openDropdownTopicId = null;
-    openDropdownStageKey = null;
-    const currentPop = document.getElementById('category-dropdown-popover');
-    if (currentPop) currentPop.remove();
-    if (categoryNavEl) {
-      categoryNavEl.querySelectorAll('.category-pill').forEach((btn) => {
-        btn.classList.remove('is-dropdown-open');
-        btn.setAttribute('aria-pressed', 'false');
-        btn.setAttribute('aria-expanded', 'false');
-      });
-    }
-  };
-
-  if (pop && !pop.classList.contains('is-closing')) {
-    pop.classList.add('is-closing');
-    if (categoryNavEl) {
-      categoryNavEl.querySelectorAll('.category-pill').forEach((btn) => {
-        btn.classList.remove('is-dropdown-open');
-        btn.setAttribute('aria-pressed', 'false');
-        btn.setAttribute('aria-expanded', 'false');
-      });
-    }
-    guidebookJumpTimers.push(setTimeout(completeClose, 220));
-    return;
-  }
-
-  completeClose();
-}
-
 export function closeCategoryDropdown() {
-  if (!openCategoryDropdownId) return;
   clearGuidebookJumpTimers();
-
-  const hasStageOpen = Boolean(openDropdownStageKey);
-  const hasTopicOpen = Boolean(openDropdownTopicId);
-
-  if (hasStageOpen) {
-    openDropdownStageKey = null;
-    renderCategoryNav();
-    guidebookJumpTimers.push(
-      setTimeout(() => {
-        if (!openCategoryDropdownId) return;
-        if (openDropdownTopicId) {
-          openDropdownTopicId = null;
-          renderCategoryNav();
-          guidebookJumpTimers.push(
-            setTimeout(() => {
-              finalizeCloseCategoryDropdown();
-            }, 220)
-          );
-        } else {
-          finalizeCloseCategoryDropdown();
-        }
-      }, 220)
-    );
-    return;
-  }
-
-  if (hasTopicOpen) {
-    openDropdownTopicId = null;
-    renderCategoryNav();
-    guidebookJumpTimers.push(
-      setTimeout(() => {
-        finalizeCloseCategoryDropdown();
-      }, 220)
-    );
-    return;
-  }
-
-  finalizeCloseCategoryDropdown();
-}
-
-export function buildCategoryDropdownHTML() {
-  const allTopicsRowsHTML = CATEGORY_ORDER.map((unitId, idx) => {
-    const uMeta = CATEGORIES[unitId];
-    const uUnlocked = isCategoryUnlocked(unitId);
-    const uDone = uUnlocked && isCategoryCompleted(unitId);
-    const uSnap = getProgressionSnapshot(unitId);
-    const prevCat = idx > 0 ? CATEGORIES[CATEGORY_ORDER[idx - 1]] : null;
-    const isTopicExpanded = openDropdownTopicId === unitId;
-    const completedSet = new Set(
-      Array.isArray(uSnap.progress.completedStages) ? uSnap.progress.completedStages : []
-    );
-    const skippedSet = new Set(
-      Array.isArray(uSnap.progress.skippedStages) ? uSnap.progress.skippedStages : []
-    );
-
-    const skippedCount = skippedSet.size;
-    const allStagesSkipped = uDone && skippedCount >= uMeta.stages.length;
-    const stateText = uDone
-      ? allStagesSkipped
-        ? `Skipped (${uMeta.stages.length}/${uMeta.stages.length} stages)`
-        : skippedCount > 0
-          ? `Done (${uMeta.stages.length - skippedCount} done, ${skippedCount} skipped)`
-          : `Certified ✓ (${uMeta.stages.length}/${uMeta.stages.length} stages)`
-      : uUnlocked
-        ? `Unlocked · Stage ${uSnap.stageNum}/${uSnap.totalStages} (${uSnap.correctPct}%)`
-        : `Locked · Complete all ${prevCat ? prevCat.stages.length : ''} stages of ${prevCat ? prevCat.label : 'previous topic'} (≥${uSnap.minAccuracy}% acc)`;
-
-    const unitStagesHTML = uMeta.stages
-      .map((st, sIdx) => {
-        const stDone = uDone || (uUnlocked && completedSet.has(sIdx));
-        const stSkipped = uUnlocked && skippedSet.has(sIdx);
-        const stActive = uUnlocked && !uDone && sIdx === uSnap.stageIndex;
-        const stageCompoundKey = `${unitId}:${sIdx}`;
-        const isVocabOpen = openDropdownStageKey === stageCompoundKey;
-
-        const isStageBlurred = state.blurLockedContent !== false && (!uUnlocked || (!stDone && !stActive));
-        const stSeen = stDone && !stSkipped ? getStageMasteryStatus(unitId, sIdx) : null;
-        const stMastered = Boolean(stDone && !stSkipped && stSeen?.seenComplete);
-        const stStateLabel = stSkipped
-          ? 'Skipped'
-          : stMastered
-            ? 'Mastered ✓'
-            : stDone
-              ? `Skills Done (${stSeen.seenCount}/${stSeen.totalCount} seen)`
-              : stActive
-                ? 'In Progress'
-                : 'Locked';
-        const isStageIntroOff = state.skippedIntroStages?.has(stageCompoundKey);
-        const stageIntroToggleHTML = !isStageBlurred
-          ? `<button type="button" class="stage-intro-toggle-btn${isStageIntroOff ? ' is-off' : ''}" data-toggle-stage-intro="${stageCompoundKey}" title="Toggle new-word introduction popups for this stage">${isStageIntroOff ? 'Intros: Off' : 'Intros: On'}</button>`
-          : '';
-        const stageSkipBtnHTML = stActive
-          ? `<button type="button" class="stage-skip-btn" data-skip-stage="${stageCompoundKey}" title="Skip this entire stage and unlock the next one">Skip Stage →</button>`
-          : '';
-        const examBadgeHTML = st.isExam ? '<span class="exam-stage-badge">EXAM · 90%</span>' : '';
-        return `
-          <div class="cat-dd-stage-row is-clickable${stSkipped ? ' is-skipped' : stMastered ? ' is-done' : stDone ? ' is-active' : stActive ? ' is-active' : ' is-locked'}${isVocabOpen ? ' is-vocab-open' : ''}" data-dd-stage="${stageCompoundKey}" role="button" tabindex="${isStageBlurred ? '-1' : '0'}" aria-disabled="${isStageBlurred}" aria-expanded="${isVocabOpen}" title="${isStageBlurred ? '' : `Click to view Spanish &amp; English covered in ${escapeHtmlText(st.label)}`}">
-            <div class="cat-dd-stage-top">
-              <span class="cat-dd-stage-name">${escapeHtmlText(st.label)}${examBadgeHTML} <span class="stage-expand-chevron">${isVocabOpen ? '▴' : '▾'}</span></span>
-              <span class="cat-dd-topic-right">${stageSkipBtnHTML}${stageIntroToggleHTML}<span class="cat-dd-stage-state">${stStateLabel}</span></span>
-            </div>
-            ${isVocabOpen ? buildStageVocabTableHTML(unitId, sIdx) : ''}
-          </div>
-        `;
-      })
-      .join('');
-
-    const unitGrammarHTML = buildUnitGrammarCardHTML(uMeta);
-
-    const isTopicBlurred = state.blurLockedContent !== false && !uUnlocked;
-    return `
-      <div class="cat-dd-topic-card${uDone ? (allStagesSkipped ? ' is-unlocked' : ' is-done') : uUnlocked ? ' is-unlocked' : ' is-locked'}${isTopicExpanded ? ' is-selected' : ''}" data-dd-topic-card="${unitId}">
-        <div class="cat-dd-topic-item" data-dd-topic="${unitId}" role="button" tabindex="${isTopicBlurred ? '-1' : '0'}" aria-disabled="${isTopicBlurred}" aria-expanded="${isTopicExpanded}">
-          <div class="cat-dd-topic-left">
-            <span class="cat-dd-topic-cefr">${escapeHtmlText(uMeta.a1Code || `A1.${idx + 1}`)}</span>
-            <div class="cat-dd-topic-text">
-              <span class="cat-dd-topic-name">${escapeHtmlText(uMeta.label)}</span>
-              <span class="cat-dd-topic-req">${escapeHtmlText(stateText)}</span>
-            </div>
-          </div>
-          <div class="cat-dd-topic-right">
-            <span class="cat-dd-topic-tag">${uDone ? (allStagesSkipped ? 'Skipped' : 'Done') : uUnlocked ? `${uSnap.stageNum}/${uSnap.totalStages}` : 'Locked'}</span>
-            <span class="timeline-unit-badge timeline-unit-toggle-arrow${isTopicExpanded ? ' is-open' : ''}" aria-hidden="true">
-              <svg class="timeline-arrow-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </span>
-          </div>
-        </div>
-        <div class="cat-dd-topic-collapse${isTopicExpanded ? ' is-open' : ''}" aria-hidden="${!isTopicExpanded}">
-          <div class="cat-dd-topic-collapse-inner">
-            <div class="cat-dd-stages-list">
-              ${unitGrammarHTML}
-              ${unitStagesHTML}
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  return `
-    <div id="category-dropdown-popover" class="category-dropdown-popover" role="dialog" aria-label="Guidebook">
-      <div class="cat-dd-header">
-        <div class="cat-dd-header-info">
-          <div class="cat-dd-title-row">
-            <span class="cat-dd-title">Guidebook</span>
-          </div>
-          <div class="cat-dd-subtitle">Select a topic to view grammar notes, stages, and Spanish/English vocabulary</div>
-        </div>
-        <button type="button" class="cat-dd-close-btn" id="cat-dd-close-btn" aria-label="Close Guidebook">✕</button>
-      </div>
-      <div class="cat-dd-topics-list">
-        ${allTopicsRowsHTML}
-      </div>
-    </div>
-  `;
 }
 
 export function renderCategoryNav() {
   if (!categoryNavEl) return;
-  const prevPop = document.getElementById('category-dropdown-popover');
-  const hadPrevPop = Boolean(prevPop && !prevPop.classList.contains('is-closing'));
-  const prevScrollTop = prevPop ? prevPop.scrollTop : 0;
-
-  const isDropdownOpen = Boolean(openCategoryDropdownId);
+  const isLearnView = state.activeView === 'path';
   const cls = [
-    'category-pill',
-    'active',
-    isDropdownOpen ? 'is-dropdown-open' : ''
+    'control-pill',
+    isLearnView ? 'active' : ''
   ]
     .filter(Boolean)
     .join(' ');
-  const pillsHTML = `
+  categoryNavEl.innerHTML = `
     <button
       type="button"
       class="${cls}"
       data-category="${escapeHtmlText(state.activeCategory || CATEGORY_ORDER[0])}"
-      aria-pressed="${isDropdownOpen}"
-      aria-expanded="${isDropdownOpen}"
-      title="Guidebook — Click for grammar notes, stages, and completion requirements"
+      aria-pressed="${isLearnView}"
+      title="Open Learn — units, Topic Rules, vocabulary, and stage controls"
     >
-      <span>Guidebook</span>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+      </svg>
+      <span>Learn</span>
     </button>
   `;
 
-  const dropdownHTML = openCategoryDropdownId ? buildCategoryDropdownHTML(openCategoryDropdownId) : '';
-  categoryNavEl.innerHTML = pillsHTML + dropdownHTML;
-
-  categoryNavEl.querySelectorAll('.category-pill').forEach((btn) => {
+  const btn = categoryNavEl.querySelector('.control-pill');
+  if (btn) {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const catId = btn.dataset.category || state.activeCategory || CATEGORY_ORDER[0];
-      const existingPop = document.getElementById('category-dropdown-popover');
-      if (openCategoryDropdownId && (!existingPop || !existingPop.classList.contains('is-closing'))) {
-        closeCategoryDropdown();
-        return;
-      }
-      clearGuidebookJumpTimers();
-      openCategoryDropdownId = catId;
-      renderCategoryNav();
-    });
-  });
-
-  const ddEl = document.getElementById('category-dropdown-popover');
-  if (ddEl) {
-    if (!hadPrevPop) {
-      ddEl.classList.add('is-entering');
-      void ddEl.offsetHeight;
-      requestAnimationFrame(() => {
-        ddEl.classList.remove('is-entering');
-      });
-    }
-    if (prevScrollTop > 0) {
-      ddEl.scrollTop = prevScrollTop;
-    }
-    ddEl.addEventListener('click', (e) => {
-      e.stopPropagation();
-    });
-    const closeBtn = document.getElementById('cat-dd-close-btn');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', () => {
-        closeCategoryDropdown();
-      });
-    }
-    ddEl.querySelectorAll('[data-skip-stage]').forEach((skipBtn) => {
-      skipBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const sKey = skipBtn.dataset.skipStage;
-        if (!sKey || !sKey.includes(':')) return;
-        const [unitId, idxStr] = sKey.split(':');
-        const stageIndex = Number(idxStr);
-        if (!unitId || !Number.isInteger(stageIndex)) return;
-        openSkipStageModal(unitId, stageIndex);
-      });
-    });
-    ddEl.querySelectorAll('[data-toggle-stage-intro]').forEach((toggleBtn) => {
-      toggleBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const sKey = toggleBtn.dataset.toggleStageIntro;
-        if (!sKey) return;
-        if (!(state.skippedIntroStages instanceof Set)) state.skippedIntroStages = new Set();
-        if (state.skippedIntroStages.has(sKey)) {
-          state.skippedIntroStages.delete(sKey);
-        } else {
-          state.skippedIntroStages.add(sKey);
-        }
-        savePersistedData();
-        renderCategoryNav();
-      });
-    });
-    ddEl.querySelectorAll('[data-toggle-word-intro]').forEach((toggleBtn) => {
-      toggleBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const wKey = toggleBtn.dataset.toggleWordIntro;
-        if (!wKey) return;
-        if (!(state.skippedIntroWords instanceof Set)) state.skippedIntroWords = new Set();
-        if (state.skippedIntroWords.has(wKey)) {
-          state.skippedIntroWords.delete(wKey);
-        } else {
-          state.skippedIntroWords.add(wKey);
-        }
-        savePersistedData();
-        renderCategoryNav();
-      });
-    });
-    ddEl.querySelectorAll('[data-toggle-vocab-fills]').forEach((varBtn) => {
-      varBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const itemId = varBtn.dataset.toggleVocabFills;
-        if (!itemId) return;
-        if (openVocabFillItemIds.has(itemId)) {
-          openVocabFillItemIds.delete(itemId);
-        } else {
-          openVocabFillItemIds.add(itemId);
-        }
-        renderCategoryNav();
-      });
-    });
-    ddEl.querySelectorAll('[data-dd-stage]').forEach((stageEl) => {
-      const toggleStageFn = (e) => {
-        e.stopPropagation();
-        const parentCard = stageEl.closest('.cat-dd-topic-card');
-        if (
-          state.blurLockedContent !== false &&
-          (stageEl.classList.contains('is-locked') || (parentCard && parentCard.classList.contains('is-locked')))
-        ) {
-          return;
-        }
-        const sKey = stageEl.dataset.ddStage;
-        if (!sKey) return;
-        openDropdownStageKey = openDropdownStageKey === sKey ? null : sKey;
-        renderCategoryNav();
-      };
-      stageEl.addEventListener('click', toggleStageFn);
-      stageEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          toggleStageFn(e);
-        }
-      });
-    });
-    ddEl.querySelectorAll('[data-dd-topic]').forEach((rowEl) => {
-      const toggleTopicFn = (e) => {
-        e.stopPropagation();
-        const parentCard = rowEl.closest('.cat-dd-topic-card');
-        if (state.blurLockedContent !== false && parentCard && parentCard.classList.contains('is-locked')) {
-          return;
-        }
-        const targetTopic = rowEl.dataset.ddTopic;
-        if (!targetTopic || !CATEGORIES[targetTopic]) return;
-        const nextOpen = openDropdownTopicId === targetTopic ? null : targetTopic;
-        openDropdownTopicId = nextOpen;
-
-        ddEl.querySelectorAll('[data-dd-topic-card]').forEach((cardEl) => {
-          const cardTopic = cardEl.dataset.ddTopicCard;
-          const isExp = cardTopic === nextOpen;
-          cardEl.classList.toggle('is-selected', isExp);
-          const itemBtn = cardEl.querySelector('[data-dd-topic]');
-          if (itemBtn) itemBtn.setAttribute('aria-expanded', String(isExp));
-          const arrowBadge = cardEl.querySelector('.timeline-unit-toggle-arrow');
-          if (arrowBadge) arrowBadge.classList.toggle('is-open', isExp);
-          const colEl = cardEl.querySelector('.cat-dd-topic-collapse');
-          if (colEl) {
-            colEl.classList.toggle('is-open', isExp);
-            colEl.setAttribute('aria-hidden', String(!isExp));
-          }
-        });
-      };
-      rowEl.addEventListener('click', toggleTopicFn);
-      rowEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          toggleTopicFn(e);
-        }
-      });
+      guidebookHooks.onOpenGuidebookView();
     });
   }
 }
 
 export function openGuidebookToCurrentStageAnimated() {
   clearGuidebookJumpTimers();
-  const catId = state.activeCategory || CATEGORY_ORDER[0];
-  const snap = getProgressionSnapshot(catId);
-  const stageIdx = snap ? snap.stageIndex : 0;
-  const stageKey = `${catId}:${stageIdx}`;
-
-  // Step 1: Open Guidebook
-  openCategoryDropdownId = catId;
-  openDropdownTopicId = null;
-  openDropdownStageKey = null;
-  renderCategoryNav();
-
-  // Step 2: Expand and scroll to the relevant topic
-  guidebookJumpTimers.push(
-    setTimeout(() => {
-      if (!openCategoryDropdownId) return;
-      openDropdownTopicId = catId;
-      renderCategoryNav();
-      const topicEl = document.querySelector(`[data-dd-topic="${catId}"]`);
-      if (topicEl) {
-        topicEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-
-      // Step 3: Open the relevant stage & wordlist
-      guidebookJumpTimers.push(
-        setTimeout(() => {
-          if (!openCategoryDropdownId) return;
-          openDropdownStageKey = stageKey;
-          renderCategoryNav();
-          const stageEl = document.querySelector(`[data-dd-stage="${stageKey}"]`);
-          if (stageEl) {
-            stageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        }, 260)
-      );
-    }, 220)
-  );
+  guidebookHooks.onOpenGuidebookToCurrentStage();
 }
 
 // Topic Rules & Education Modal
@@ -642,6 +301,7 @@ export function isTopicUntouched(catId) {
 
 export function isUserNewToTopic(catId) {
   if (!catId || !CATEGORIES[catId]) return false;
+  if (isTrackingDisabled() && untrackedSeenTopicGuides.has(catId)) return false;
   const seen = state.seenTopicGuides instanceof Set && state.seenTopicGuides.has(catId);
   return isTopicUntouched(catId) && !seen;
 }
@@ -734,26 +394,8 @@ export function getTopicEducateContent(catId) {
   };
 }
 
-export function syncTopicEducateButtonUI(catId = state.activeCategory) {
-  if (!stageEducateBtn) return;
-  const isUnlocked = isCategoryUnlocked(catId);
-  const content = getTopicEducateContent(catId);
-  const shouldShow = isUnlocked && content.hasRules;
-
-  stageEducateBtn.classList.toggle('hidden', !shouldShow);
-  if (!shouldShow) return;
-
-  const isNew = isUserNewToTopic(catId);
-  stageEducateBtn.classList.toggle('is-new', isNew);
-  if (stageEducateLabelEl) {
-    stageEducateLabelEl.textContent = 'Topic Rules';
-  }
-  if (stageEducateNewBadgeEl) {
-    stageEducateNewBadgeEl.classList.toggle('hidden', !isNew);
-  }
-  stageEducateBtn.title = isNew
-    ? `New topic! Learn key rules for ${CATEGORIES[catId]?.label || 'this topic'}`
-    : `Review rules & patterns for ${CATEGORIES[catId]?.label || 'this topic'}`;
+export function syncTopicEducateButtonUI() {
+  // Topic Rules are now displayed per unit inside the Guidebook screen.
 }
 
 export function openTopicEducateModal(catId = state.activeCategory) {
@@ -832,12 +474,16 @@ export function closeTopicEducateModal({ markSeen = true } = {}) {
     topicEducateModalBackdropEl.classList.add('hidden');
   }
   if (markSeen && closedCatId && CATEGORIES[closedCatId]) {
-    if (!(state.seenTopicGuides instanceof Set)) {
-      state.seenTopicGuides = new Set();
-    }
-    if (!state.seenTopicGuides.has(closedCatId)) {
-      state.seenTopicGuides.add(closedCatId);
-      savePersistedData();
+    if (isTrackingDisabled()) {
+      untrackedSeenTopicGuides.add(closedCatId);
+    } else {
+      if (!(state.seenTopicGuides instanceof Set)) {
+        state.seenTopicGuides = new Set();
+      }
+      if (!state.seenTopicGuides.has(closedCatId)) {
+        state.seenTopicGuides.add(closedCatId);
+        savePersistedData();
+      }
     }
   }
   syncTopicEducateButtonUI(state.activeCategory);
@@ -857,7 +503,6 @@ export function maybeOpenNewTopicEducateModal(catId = state.activeCategory) {
   if (typeof guidebookHooks.isHandsFreeRunning === 'function' && guidebookHooks.isHandsFreeRunning()) {
     return;
   }
-  if (openCategoryDropdownId) return;
   if (!catId || !CATEGORIES[catId] || !isCategoryUnlocked(catId)) return;
   if (!isUserNewToTopic(catId)) return;
   if (!getTopicEducateContent(catId).hasRules) return;
@@ -910,13 +555,7 @@ export function confirmSkipStageFromGuidebook() {
   if (!target) return;
   const result = skipStageInProgression(target.catId, target.stageIndex);
   if (!result) return;
-  openDropdownStageKey = null;
-  if (result.unlockedNextUnitId) {
-    openDropdownTopicId = result.unlockedNextUnitId;
-  } else {
-    openDropdownTopicId = target.catId;
-  }
-  renderCategoryNav();
+  guidebookHooks.onAfterSkipStage(result);
 }
 
 // New Word Introduction Modal — Syllable-aware Spanish phonetic guide & mouth-position notes
@@ -1266,6 +905,7 @@ export function isWordEligibleForIntro(catId, stageIndex, itemOrNum) {
   if (state.skippedIntroStages?.has(stageKey)) return false;
   if (state.skippedIntroWords?.has(introKey)) return false;
   if (state.introducedItems?.has(introKey)) return false;
+  if (isTrackingDisabled() && untrackedIntroducedItems.has(introKey)) return false;
 
   const entry = catId === 'numbers' ? state.counts?.[itemOrNum] : state.phraseCounts?.[itemOrNum?.id];
   const total = (Number(entry?.correct) || 0) + (Number(entry?.incorrect) || 0);
@@ -1309,6 +949,10 @@ function renderWordIntroPronunciation(pronEl, esText, cachedBreakdown = null) {
 
 export function markWordIntroducedInHandsFree(details) {
   if (!details || !details.introKey) return;
+  if (isTrackingDisabled()) {
+    untrackedIntroducedItems.add(details.introKey);
+    return;
+  }
   if (details.item) {
     recordWordFirstShown(details.item.categoryId || state.activeCategory, details.item);
   } else if (typeof details.introKey === 'string' && details.introKey.startsWith('num:')) {
@@ -1406,14 +1050,18 @@ export function closeWordIntroModal({ skipStage = false } = {}) {
   const data = pendingWordIntroData;
   pendingWordIntroData = null;
   if (data) {
-    if (!(state.introducedItems instanceof Set)) state.introducedItems = new Set();
-    state.introducedItems.add(data.introKey);
-    if (skipStage) {
-      if (!(state.skippedIntroStages instanceof Set)) state.skippedIntroStages = new Set();
-      state.skippedIntroStages.add(data.stageKey);
-      renderCategoryNav();
+    if (isTrackingDisabled()) {
+      untrackedIntroducedItems.add(data.introKey);
+    } else {
+      if (!(state.introducedItems instanceof Set)) state.introducedItems = new Set();
+      state.introducedItems.add(data.introKey);
+      if (skipStage) {
+        if (!(state.skippedIntroStages instanceof Set)) state.skippedIntroStages = new Set();
+        state.skippedIntroStages.add(data.stageKey);
+        renderCategoryNav();
+      }
+      savePersistedData();
     }
-    savePersistedData();
     if (data.playAudioOnClose && state.activeView === 'play' && 'speechSynthesis' in window) {
       speakSpanish(guidebookHooks.getSpokenText());
     }
@@ -1446,11 +1094,6 @@ export function initGuidebookModule(hooks = {}) {
     });
   }
 
-  if (stageEducateBtn) {
-    stageEducateBtn.addEventListener('click', () => {
-      openTopicEducateModal(state.activeCategory);
-    });
-  }
   if (topicEducateCloseXBtn) {
     topicEducateCloseXBtn.addEventListener('click', () => {
       closeTopicEducateModal({ markSeen: true });

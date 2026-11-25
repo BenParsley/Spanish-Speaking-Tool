@@ -7,6 +7,8 @@ import {
   speechConsoleHealthBtn,
   speechConsoleLogMetaEl,
   speechConsoleLogsEl,
+  speechConsoleModelBadgeEl,
+  speechConsoleModelPinEl,
   speechConsolePanelEl,
   speechConsoleStatePillEl,
   speechConsoleStatsEl,
@@ -82,8 +84,11 @@ export function openSpeechConsole() {
   if (!speechConsolePanelEl) return;
   speechConsolePanelEl.classList.remove('hidden');
   if (speechConsoleToggleBtn) {
-    speechConsoleToggleBtn.classList.add('is-active');
+    speechConsoleToggleBtn.classList.add('is-active', 'is-on');
     speechConsoleToggleBtn.setAttribute('aria-expanded', 'true');
+    speechConsoleToggleBtn.setAttribute('aria-checked', 'true');
+    const lblEl = document.getElementById('speech-console-toggle-label');
+    if (lblEl) lblEl.textContent = 'On';
   }
   renderSpeechConsoleStats();
   renderSpeechConsoleLogs();
@@ -93,8 +98,11 @@ export function closeSpeechConsole() {
   if (!speechConsolePanelEl) return;
   speechConsolePanelEl.classList.add('hidden');
   if (speechConsoleToggleBtn) {
-    speechConsoleToggleBtn.classList.remove('is-active');
+    speechConsoleToggleBtn.classList.remove('is-active', 'is-on');
     speechConsoleToggleBtn.setAttribute('aria-expanded', 'false');
+    speechConsoleToggleBtn.setAttribute('aria-checked', 'false');
+    const lblEl = document.getElementById('speech-console-toggle-label');
+    if (lblEl) lblEl.textContent = 'Off';
   }
 }
 
@@ -107,6 +115,24 @@ export function toggleSpeechConsole() {
 }
 
 export function renderSpeechConsoleStats() {
+  const isHybrid = consoleStats.engine === 'local';
+  if (speechConsoleModelBadgeEl) {
+    speechConsoleModelBadgeEl.textContent = isHybrid ? 'Hybrid' : 'Browser';
+    speechConsoleModelBadgeEl.classList.toggle('is-hybrid', isHybrid);
+    speechConsoleModelBadgeEl.classList.toggle('is-browser', !isHybrid);
+    speechConsoleModelBadgeEl.title = isHybrid
+      ? 'Active Pronunciation Model: Local Hybrid (es-PA)'
+      : 'Active Pronunciation Model: Browser Speech-to-Text';
+  }
+  if (speechConsoleModelPinEl) {
+    const modelExtra = isHybrid && consoleStats.asrModel ? ` · ${consoleStats.asrModel}` : '';
+    speechConsoleModelPinEl.textContent = isHybrid
+      ? `Model: Local Hybrid${modelExtra}`
+      : 'Model: Browser STT (Local)';
+    speechConsoleModelPinEl.classList.toggle('is-hybrid', isHybrid);
+    speechConsoleModelPinEl.classList.toggle('is-browser', !isHybrid);
+  }
+
   if (speechConsoleStatePillEl) {
     const statusMap = {
       ready: { label: 'Ready · Hybrid', cls: 'is-ready' },

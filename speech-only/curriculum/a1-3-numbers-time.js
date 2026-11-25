@@ -413,6 +413,11 @@ export function buildQuestionContext(
       hasExtension: true,
       baseEs: adjEs,
       baseAltEs: Array.from(new Set([adjEs, baseEs, num === 100 ? 'ciento' : ''].filter(Boolean))),
+      baseEn: String(num),
+      enSegments: [
+        { text: String(num), role: 'base' },
+        { text: unitEn, role: 'extension' }
+      ],
       extensionEs: unitEs,
       extensionEn: unitEn,
       extensionKey: 'numbers::dolares',
@@ -489,6 +494,11 @@ export function buildQuestionContext(
       hasExtension: true,
       baseEs: primary.adjEs,
       baseAltEs: Array.from(new Set([primary.adjEs, baseEs, applySpanishGender(baseEs, 'm'), applySpanishGender(baseEs, 'f'), num === 100 ? 'ciento' : ''].filter(Boolean))),
+      baseEn: String(num),
+      enSegments: [
+        { text: String(num), role: 'base' },
+        { text: primary.nounEn, role: 'extension' }
+      ],
       extensionEs: primary.nounEs,
       extensionEn: primary.nounEn,
       extensionKey: `numbers::${pickedScenario.id}`,
@@ -534,6 +544,11 @@ export function buildQuestionContext(
     hasExtension: true,
     baseEs: adjEs,
     baseAltEs: Array.from(new Set([adjEs, baseEs, num === 100 ? 'ciento' : ''].filter(Boolean))),
+    baseEn: String(num),
+    enSegments: [
+      { text: String(num), role: 'base' },
+      { text: nounEn, role: 'extension' }
+    ],
     extensionEs: nounEs,
     extensionEn: nounEn,
     extensionKey: 'numbers::anos',

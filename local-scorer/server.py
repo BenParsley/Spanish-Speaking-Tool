@@ -8,6 +8,7 @@ import os
 import shutil
 import threading
 import time
+import uuid
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -356,12 +357,17 @@ async def synthesize_panamanian_tts(
     cache_key = hashlib.sha256(f"{voice}|{rate_str}|{clean_text}".encode("utf-8")).hexdigest()[:24]
     out_path = os.path.join(TTS_CACHE_DIR, f"{cache_key}.mp3")
     if not os.path.exists(out_path):
+        tmp_path = os.path.join(TTS_CACHE_DIR, f"{cache_key}.{uuid.uuid4().hex[:8]}.tmp")
         try:
             communicate = edge_tts.Communicate(clean_text, voice=voice, rate=rate_str)
-            await communicate.save(out_path)
+            await communicate.save(tmp_path)
+            os.replace(tmp_path, out_path)
         except Exception as exc:
-            if os.path.exists(out_path):
-                os.remove(out_path)
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
             raise HTTPException(status_code=502, detail=f"Local neural TTS failed: {exc}")
 
     return FileResponse(out_path, media_type="audio/mpeg")

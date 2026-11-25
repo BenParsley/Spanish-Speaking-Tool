@@ -299,16 +299,13 @@ async function armHandsFreeListening(token, { purpose = 'answer', skipCooldown =
   if (purpose === 'answer' && state.answered) return;
 
   if (!skipCooldown) {
-    const cooldownMs = [250, 350, 550].includes(Number(state.handsFreeCooldownMs))
-      ? Number(state.handsFreeCooldownMs)
-      : 350;
     setHandsFreePhase('cooldown', statusNote);
-    const okCool = await waitMs(cooldownMs, token);
+    const okCool = await waitMs(350, token);
     if (!okCool || !isTokenAlive(token)) return;
   }
 
   playListeningReadyChime();
-  const okChime = await waitMs(state.handsFreeEarcons !== false && state.sfxVolume > 0 ? 100 : 20, token);
+  const okChime = await waitMs(state.sfxVolume > 0 ? 100 : 20, token);
   if (!okChime || !isTokenAlive(token)) return;
   if (purpose === 'answer' && state.answered) return;
 
@@ -358,21 +355,10 @@ async function runCurrentQuestionTurn(token, { shouldShowIntro = false, introDet
     return;
   }
 
-  // Graded mode turn: show English on screen only (never speak English); speak Spanish only if Shadowing is on (never during Hard Topic Exam)
-  let spokeTts = false;
-  if (state.shadowingMode && !meta.isExamStage && hasVolume && expectedEs && !repeatOnlyPrompt) {
-    setHandsFreePhase('cooldown', volumeNote);
-    const okDelay = await waitMs(HANDS_FREE_NEW_WORD_AUDIO_DELAY_MS, token);
-    if (!okDelay || !isTokenAlive(token)) return;
-    setHandsFreePhase('speaking-prompt', volumeNote);
-    const okEs = await speakSpanishAsync(expectedEs);
-    if (!okEs || !isTokenAlive(token)) return;
-    spokeTts = true;
-  }
-
+  // Graded mode turn: show English on screen only (never speak English)
   await armHandsFreeListening(token, {
     purpose: 'answer',
-    skipCooldown: !spokeTts,
+    skipCooldown: true,
     statusNote: volumeNote
   });
 }
@@ -391,9 +377,6 @@ export async function startHandsFreeSession() {
 
   logSpeechEvent('HANDS_FREE', 'Starting Hands-Free Mode session.', {
     readPrompt: state.handsFreeReadPrompt !== false,
-    silenceMs: state.handsFreeSilenceMs,
-    incorrectPolicy: state.handsFreeIncorrectPolicy,
-    cooldownMs: state.handsFreeCooldownMs,
     engine: state.pronunciationEngine
   });
 
@@ -593,7 +576,6 @@ export async function handleHandsFreeIncorrectScreen({
   handsFreeState.consecutiveNoSpeechCount = 0;
 
   const targetEs = expectedEs || hfHooks.getSpokenText();
-  const policy = state.handsFreeIncorrectPolicy || 'auto-retry';
 
   setHandsFreePhase('review', 'Listen to the correct Panamanian Spanish…');
   if (Number(state.volume) > 0 && targetEs) {
@@ -607,16 +589,7 @@ export async function handleHandsFreeIncorrectScreen({
     }
   }
 
-  if (policy === 'voice-choice' && canRetry) {
-    setHandsFreePhase('review', 'Say "retry" for 2 more tries, or "next" to continue.');
-    await armHandsFreeListening(token, {
-      purpose: 'command',
-      statusNote: 'Say "retry" or "next" (or "slower" / "pause")…'
-    });
-    return true;
-  }
-
-  if (policy === 'auto-retry' && canRetry) {
+  if (canRetry) {
     setHandsFreePhase('review', 'Starting 2-try retry round in 1.5s… (Space to pause)');
     const okWait = await waitMs(1500, token);
     if (!okWait || !isTokenAlive(token)) return true;
@@ -737,21 +710,32 @@ export async function handleHandsFreeVoiceCommand(cmd, { expectedEs = '' } = {})
     clearHandsFreeTimers();
     handsFreeState.sessionToken += 1;
     const token = handsFreeState.sessionToken;
-    const isGradedExam = !state.practiceMode && !state.shadowingMode && !isIncorrectVisible;
+    const meta = hfHooks.getCurrentPromptMeta();
+    const isHardExam = Boolean(meta?.isExamStage);
+    const canRevealSpanish =
+      state.practiceMode ||
+      isIncorrectVisible ||
+      (!isHardExam && (voiceCaptureState.attemptCount > 0 || voiceCaptureState.retryRoundUsed));
 
-    if (isGradedExam && isHandsFreeRunning() && voiceCaptureState.attemptCount === 0 && !voiceCaptureState.retryRoundUsed) {
-      // NEVER leak Spanish before Attempt 1 in Graded Mode, and never speak English in Hands-Free!
-      setHandsFreePhase('listening', 'Prompt shown above — try speaking in Spanish first.');
-      if (typeAnswerFeedbackEl) {
-        typeAnswerFeedbackEl.textContent = 'Try Attempt 1 first before hearing Spanish — speak when ready!';
-        typeAnswerFeedbackEl.classList.remove('is-invisible', 'is-correct', 'is-incorrect', 'is-warning');
-        typeAnswerFeedbackEl.classList.add('is-transcript');
+    if (!canRevealSpanish) {
+      // NEVER leak Spanish before Attempt 1 in Graded Mode or during Hard Topic Exam!
+      if (isHandsFreeRunning()) {
+        setHandsFreePhase('listening', 'Prompt shown above — try speaking in Spanish first.');
       }
-      await armHandsFreeListening(token, { purpose: 'answer', skipCooldown: true });
+      if (typeAnswerFeedbackEl) {
+        typeAnswerFeedbackEl.textContent = isHardExam
+          ? 'Spanish audio is locked during the Hard Topic Exam — speak your answer!'
+          : 'Try Attempt 1 first before hearing Spanish — speak when ready!';
+        typeAnswerFeedbackEl.classList.remove('is-invisible', 'is-correct', 'is-incorrect', 'is-transcript');
+        typeAnswerFeedbackEl.classList.add('is-warning');
+      }
+      if (isHandsFreeRunning()) {
+        await armHandsFreeListening(token, { purpose: 'answer', skipCooldown: true });
+      }
       return true;
     }
 
-    // Practice / Shadowing / Incorrect Screen / non-Hands-Free: replay Spanish
+    // Practice / Shadowing / Incorrect Screen / post-Attempt-1: replay Spanish
     if (isHandsFreeRunning()) {
       setHandsFreePhase('coaching', `Replaying "${targetEs}"…`);
     }
@@ -773,12 +757,12 @@ export async function handleHandsFreeVoiceCommand(cmd, { expectedEs = '' } = {})
   }
 
   if (cmd === 'hear_slow' || cmd === 'word_by_word') {
+    const meta = hfHooks.getCurrentPromptMeta();
+    const isHardExam = Boolean(meta?.isExamStage);
     const canRevealSpanish =
       state.practiceMode ||
-      state.shadowingMode ||
       isIncorrectVisible ||
-      voiceCaptureState.attemptCount > 0 ||
-      voiceCaptureState.retryRoundUsed;
+      (!isHardExam && (voiceCaptureState.attemptCount > 0 || voiceCaptureState.retryRoundUsed));
 
     clearHandsFreeTimers();
     handsFreeState.sessionToken += 1;
@@ -841,10 +825,10 @@ export async function handleHandsFreeNoSpeech({ purpose = 'answer' } = {}) {
     return;
   }
 
-  // First timeout: replay Spanish only in Practice/Shadowing mode, then re-arm cleanly (never speak English)
+  // First timeout: replay Spanish only in Practice mode, then re-arm cleanly (never speak English)
   let spokeSpanish = false;
   const expectedEs = hfHooks.getSpokenText();
-  if ((state.practiceMode || state.shadowingMode) && Number(state.volume) > 0 && expectedEs) {
+  if (state.practiceMode && Number(state.volume) > 0 && expectedEs) {
     setHandsFreePhase('speaking-prompt', 'No speech heard — replaying Spanish model…');
     const okEs = await speakSpanishAsync(expectedEs);
     if (!okEs || !isTokenAlive(token)) return;
@@ -887,11 +871,6 @@ export async function handleHandsFreeStageComplete({
   clearHandsFreeTimers();
   handsFreeState.sessionToken += 1;
   const token = handsFreeState.sessionToken;
-
-  if (state.handsFreePauseOnStage) {
-    pauseHandsFreeSession('stage-complete');
-    return true;
-  }
 
   const nextName = nextStageLabel || nextUnitLabel || 'the next stage';
   setHandsFreePhase('coaching', `${stageLabel || 'Stage'} complete! Moving to ${nextName}…`);

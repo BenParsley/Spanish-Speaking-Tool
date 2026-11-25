@@ -69,14 +69,15 @@ function extractPatternBaseTokens(patternEs) {
   const rawParts = withoutSlots.split(/[\s/]+/).filter(Boolean);
   const tokens = [];
   rawParts.forEach((raw) => {
-    const clean = raw.replace(/[¿¡?!.,;:()"']/g, '').trim();
-    if (!clean) return;
-    // Expand optional suffixes like cuesta(n), duele(n), abierto(a)
-    const optMatch = clean.match(/^([a-záéíóúñü]+)\(([a-záéíóúñü]+)\)$/i);
+    const cleanWithParens = raw.replace(/[¿¡?!.,;:"']/g, '').trim();
+    if (!cleanWithParens) return;
+    // Expand optional suffixes like cuesta(n), duele(n), abierto(a) BEFORE stripping parens
+    const optMatch = cleanWithParens.match(/^([a-záéíóúñü]+)\(([a-záéíóúñü]+)\)$/i);
     if (optMatch) {
       tokens.push(normalizeWordToken(optMatch[1]));
       tokens.push(normalizeWordToken(optMatch[1] + optMatch[2]));
     } else {
+      const clean = cleanWithParens.replace(/[()]/g, '').trim();
       const norm = normalizeWordToken(clean);
       if (norm) tokens.push(norm);
     }
@@ -84,13 +85,240 @@ function extractPatternBaseTokens(patternEs) {
   return tokens;
 }
 
-function computeBaseExtensionSplit(es, altEs, item, fillInfo) {
+function escapeRegexLiteral(str) {
+  return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function findEnglishSubstringSpan(haystack, needle, occupied = []) {
+  const cleanNeedle = String(needle || '').trim();
+  if (!cleanNeedle || !haystack) return null;
+  const re = new RegExp(`(^|[^a-zA-Z0-9'])(${escapeRegexLiteral(cleanNeedle)})(?=$|[^a-zA-Z0-9'])`, 'gi');
+  let m;
+  while ((m = re.exec(haystack)) !== null) {
+    const start = m.index + (m[1] ? m[1].length : 0);
+    const end = start + m[2].length;
+    const overlaps = occupied.some(([os, oe]) => start < oe && end > os);
+    if (!overlaps) {
+      return [start, end];
+    }
+  }
+  return null;
+}
+
+function collectEnglishCandidatesForEntry(entry, patternEn = '') {
+  if (!entry || typeof entry !== 'object') return [];
+  const raw = [entry.en, entry.defEn, entry.indefEn, entry.plEn]
+    .filter((s) => typeof s === 'string' && s.trim().length > 0)
+    .map((s) => s.trim());
+
+  const expanded = [];
+  const add = (val) => {
+    const trimmed = String(val || '').trim();
+    if (trimmed && !expanded.includes(trimmed)) expanded.push(trimmed);
+  };
+
+  raw.forEach((s) => {
+    // For "I [have / am] [symptom]" items, peel leading "have " / "am " so "I have" / "I am" stays in Base
+    if (/\[have\s*\/\s*am\]/i.test(patternEn)) {
+      const strippedVerb = s.replace(/^(?:have|am)\s+/i, '').trim();
+      if (strippedVerb && strippedVerb !== s) {
+        add(strippedVerb);
+        add(polishEnglishGrammar(strippedVerb));
+        return;
+      }
+    }
+    add(s);
+    const polished = polishEnglishGrammar(s);
+    add(polished);
+    if (/^a\s+[aeiou]/i.test(s)) {
+      add(s.replace(/^a\s+/i, 'an '));
+    }
+    if (/^the\s+/i.test(s)) {
+      add(s.replace(/^the\s+/i, ''));
+    }
+    if (/\s+weather$/i.test(s)) {
+      add(s.replace(/\s+weather$/i, ''));
+    }
+  });
+
+  // Sort longest first so multi-word fills match before shorter sub-variants
+  return expanded.sort((a, b) => b.length - a.length);
+}
+
+function buildSegmentsFromExtSpans(enText, extSpans) {
+  const text = String(enText || '');
+  if (!text || !Array.isArray(extSpans) || extSpans.length === 0) return [];
+
+  const sorted = extSpans
+    .filter(([s, e]) => Number.isInteger(s) && Number.isInteger(e) && e > s)
+    .sort((a, b) => a[0] - b[0]);
+  if (sorted.length === 0) return [];
+
+  // Merge adjacent extension spans separated only by whitespace
+  const merged = [sorted[0].slice()];
+  for (let i = 1; i < sorted.length; i += 1) {
+    const prev = merged[merged.length - 1];
+    const curr = sorted[i];
+    const between = text.slice(prev[1], curr[0]);
+    if (/^\s*$/.test(between)) {
+      prev[1] = Math.max(prev[1], curr[1]);
+    } else {
+      merged.push(curr.slice());
+    }
+  }
+
+  const rawSegs = [];
+  let cursor = 0;
+  merged.forEach(([s, e]) => {
+    if (s > cursor) {
+      rawSegs.push({ text: text.slice(cursor, s), role: 'base' });
+    }
+    rawSegs.push({ text: text.slice(s, e), role: 'extension' });
+    cursor = e;
+  });
+  if (cursor < text.length) {
+    rawSegs.push({ text: text.slice(cursor), role: 'base' });
+  }
+
+  // Clean whitespace and separate standalone boundary punctuation (like "," or "?")
+  const cleaned = [];
+  rawSegs.forEach((seg) => {
+    const trimmed = seg.text.trim();
+    if (!trimmed) return;
+    if (seg.role === 'base') {
+      if (/^[,?!.;:]+$/.test(trimmed)) {
+        cleaned.push({ text: trimmed, role: 'punct' });
+        return;
+      }
+      // Peel trailing comma so "good morning," -> Base "good morning" + punct ","
+      const trailComma = trimmed.match(/^(.+?)(,)$/);
+      if (trailComma) {
+        cleaned.push({ text: trailComma[1].trim(), role: 'base' });
+        cleaned.push({ text: trailComma[2], role: 'punct' });
+        return;
+      }
+      // Peel leading comma
+      const leadComma = trimmed.match(/^(,)(.+)$/);
+      if (leadComma) {
+        cleaned.push({ text: leadComma[1], role: 'punct' });
+        cleaned.push({ text: leadComma[2].trim(), role: 'base' });
+        return;
+      }
+    }
+    cleaned.push({ text: trimmed, role: seg.role });
+  });
+
+  const hasBase = cleaned.some((s) => s.role === 'base');
+  const hasExt = cleaned.some((s) => s.role === 'extension');
+  return hasBase && hasExt ? cleaned : [];
+}
+
+function computeEnglishBaseExtensionSegments(en, item, fillInfo, hasExtension) {
+  const enStr = String(en || '').trim();
+  if (!hasExtension || !enStr) {
+    return { enSegments: [], baseEn: enStr };
+  }
+
+  const patternEn = String(item?.structure?.patternEn || '');
+  const patternEs = String(item?.structure?.patternEs || '');
+  const slotMatches = patternEn.match(/\[[^\]]+\]/g) || [];
+  const spans = [];
+
+  if (fillInfo.isDualBank && fillInfo.entryA && fillInfo.entryB) {
+    const baseTokenPoolEs = extractPatternBaseTokens(patternEs);
+    const entryAIsBase = baseTokenPoolEs.length === 0 || slotMatches.length <= 1;
+    if (entryAIsBase) {
+      const candsB = collectEnglishCandidatesForEntry(fillInfo.entryB, patternEn);
+      for (const cand of candsB) {
+        const hit = findEnglishSubstringSpan(enStr, cand, spans);
+        if (hit && (hit[1] - hit[0]) < enStr.length) {
+          spans.push(hit);
+          break;
+        }
+      }
+    } else {
+      const candsA = collectEnglishCandidatesForEntry(fillInfo.entryA, patternEn);
+      for (const cand of candsA) {
+        const hit = findEnglishSubstringSpan(enStr, cand, spans);
+        if (hit) {
+          spans.push(hit);
+          break;
+        }
+      }
+      const candsB = collectEnglishCandidatesForEntry(fillInfo.entryB, patternEn);
+      for (const cand of candsB) {
+        const hit = findEnglishSubstringSpan(enStr, cand, spans);
+        if (hit) {
+          spans.push(hit);
+          break;
+        }
+      }
+    }
+  } else if (fillInfo.entryA) {
+    // Handle article/possessive patterns where entry.defEn/indefEn/es includes the article ("the man", "a friend", "my mother")
+    const leadLitMatch = patternEn.match(/^([^[]+)\[/);
+    const leadLiteral = leadLitMatch ? leadLitMatch[1].trim() : '';
+    const candsA = collectEnglishCandidatesForEntry(fillInfo.entryA, patternEn);
+
+    let matchedSpan = null;
+    for (const cand of candsA) {
+      const hit = findEnglishSubstringSpan(enStr, cand, spans);
+      if (hit) {
+        const coversWhole = hit[0] === 0 && hit[1] >= enStr.replace(/[?!.]+$/, '').length;
+        if (!coversWhole) {
+          matchedSpan = hit;
+          break;
+        }
+      }
+    }
+
+    if (!matchedSpan && leadLiteral) {
+      // Split off leading English base literals (e.g., "the / a / an / my")
+      const leadAlts = leadLiteral
+        .split('/')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .sort((a, b) => b.length - a.length);
+      for (const alt of leadAlts) {
+        const re = new RegExp(`^(${escapeRegexLiteral(alt)})\\s+(.+)$`, 'i');
+        const m = enStr.match(re);
+        if (m) {
+          const extStart = enStr.indexOf(m[2], m[1].length);
+          const endClean = enStr.replace(/[?!.]+$/, '').length;
+          if (extStart > 0 && endClean > extStart) {
+            matchedSpan = [extStart, endClean];
+            break;
+          }
+        }
+      }
+    }
+
+    if (matchedSpan) {
+      spans.push(matchedSpan);
+    }
+  }
+
+  const enSegments = buildSegmentsFromExtSpans(enStr, spans);
+  const baseEn =
+    enSegments.length > 0
+      ? enSegments
+          .filter((s) => s.role === 'base')
+          .map((s) => s.text)
+          .join(' ')
+          .trim()
+      : enStr;
+  return { enSegments, baseEn };
+}
+
+function computeBaseExtensionSplit(es, altEs, en, item, fillInfo) {
   const words = tokenizeSpanishWords(es);
   if (words.length < 2) {
     return {
       hasExtension: false,
       baseEs: es,
       baseAltEs: Array.isArray(altEs) ? altEs : [],
+      baseEn: String(en || '').trim(),
+      enSegments: [],
       extensionEs: '',
       extensionEn: '',
       extensionKey: '',
@@ -268,6 +496,8 @@ function computeBaseExtensionSplit(es, altEs, item, fillInfo) {
       hasExtension: false,
       baseEs: es,
       baseAltEs: Array.isArray(altEs) ? altEs : [],
+      baseEn: String(en || '').trim(),
+      enSegments: [],
       extensionEs: '',
       extensionEn: '',
       extensionKey: '',
@@ -300,7 +530,29 @@ function computeBaseExtensionSplit(es, altEs, item, fillInfo) {
       baseAltSet.add(aWords.join(' '));
     }
   });
+  // Allow masculine/feminine & singular/plural base inflections when the user answers base-only without the extension
+  const inflectionSwaps = [
+    [/\babierta\b/gi, 'abierto'],
+    [/\babierto\b/gi, 'abierta'],
+    [/\bcerrada\b/gi, 'cerrado'],
+    [/\bcerrado\b/gi, 'cerrada'],
+    [/\bcercana\b/gi, 'cercano'],
+    [/\bcercano\b/gi, 'cercana'],
+    [/\bincluidas?\b/gi, 'incluido'],
+    [/\bincluidos?\b/gi, 'incluida'],
+    [/\bestán\b/gi, 'está'],
+    [/\bduelen\b/gi, 'duele'],
+    [/\bcuestan\b/gi, 'cuesta']
+  ];
+  Array.from(baseAltSet).forEach((cand) => {
+    inflectionSwaps.forEach(([re, rep]) => {
+      if (re.test(cand)) {
+        baseAltSet.add(cand.replace(re, rep));
+      }
+    });
+  });
 
+  const { enSegments, baseEn } = computeEnglishBaseExtensionSegments(en, item, fillInfo, true);
   const slug = normalizeExtensionSlug(finalExtEs || fillInfo.fillKey || 'ext');
   const catPrefix = item?.categoryId || 'phrase';
 
@@ -308,6 +560,8 @@ function computeBaseExtensionSplit(es, altEs, item, fillInfo) {
     hasExtension: true,
     baseEs,
     baseAltEs: Array.from(baseAltSet).filter(Boolean),
+    baseEn,
+    enSegments,
     extensionEs: finalExtEs,
     extensionEn: finalExtEn,
     extensionKey: `${catPrefix}::${slug}`,
@@ -357,7 +611,7 @@ export function getAllVariationsForStructure(item) {
         const fillLabelEs = [a.es || a.ms || a.defEs || '', b.es || b.ms || b.defEs || ''].filter(Boolean).join(' + ');
         const fillLabelEn = [a.en || a.defEn || '', b.en || b.defEn || ''].filter(Boolean).join(' + ');
         const fillKey = `${a.id || a.es}__${b.id || b.es}`;
-        const split = computeBaseExtensionSplit(es, altEs, item, {
+        const split = computeBaseExtensionSplit(es, altEs, en, item, {
           isDualBank: true,
           entryA: a,
           entryB: b,
@@ -395,7 +649,7 @@ export function getAllVariationsForStructure(item) {
       const fillLabelEs = entry.es || entry.ms || entry.defEs || '';
       const fillLabelEn = entry.en || entry.defEn || '';
       const fillKey = String(entry.id || entry.es || variations.length);
-      const split = computeBaseExtensionSplit(es, altEs, item, {
+      const split = computeBaseExtensionSplit(es, altEs, en, item, {
         isDualBank: false,
         entryA: entry,
         entryB: null,
@@ -489,6 +743,8 @@ export function resolveDynamicQuestionInstance(
     hasExtension: Boolean(chosen.hasExtension),
     baseEs: chosen.baseEs || chosen.es,
     baseAltEs: Array.isArray(chosen.baseAltEs) ? chosen.baseAltEs : [],
+    baseEn: chosen.baseEn || chosen.en,
+    enSegments: Array.isArray(chosen.enSegments) ? chosen.enSegments : [],
     extensionEs: chosen.extensionEs || '',
     extensionEn: chosen.extensionEn || '',
     extensionKey: chosen.extensionKey || '',

@@ -15,14 +15,8 @@ import {
   dailyGoalFooterEl,
   dailyGoalMilestoneEl,
   hudProgressionFillEl,
-  hudStageSeenEl,
   hudStageTitleEl,
-  progressionBarFillEl,
-  progressionPanelEl,
-  progressionStageLabelEl,
-  progressionStageStatsEl,
   stageProgressionHudEl,
-  stageSkillTrackEl,
   subjectCompleteDescEl,
   subjectCompleteModalBackdropEl,
   subjectCompleteNextBtn,
@@ -49,6 +43,7 @@ import {
   getPreviousBlockingCategory,
   isCategoryCompleted,
   isCategoryUnlocked,
+  isTrackingDisabled,
   isVocabItemProficient,
   savePersistedData,
   state
@@ -59,16 +54,35 @@ import { escapeHtmlText } from './utils.js';
 let pendingSubjectNextId = null;
 let pendingAwardFollowup = null;
 let pendingReintroduceSkillKey = null;
+let progressionMilestoneTimer = null;
+
+function flashProgressionMilestone(message) {
+  if (!dailyGoalMilestoneEl || !dailyGoalFooterEl || !message) return;
+  if (progressionMilestoneTimer !== null) {
+    clearTimeout(progressionMilestoneTimer);
+    progressionMilestoneTimer = null;
+  }
+  dailyGoalMilestoneEl.textContent = message;
+  dailyGoalFooterEl.classList.remove('is-milestone');
+  void dailyGoalFooterEl.offsetWidth;
+  dailyGoalFooterEl.classList.add('is-milestone');
+  progressionMilestoneTimer = setTimeout(() => {
+    dailyGoalFooterEl.classList.remove('is-milestone');
+    progressionMilestoneTimer = null;
+  }, 1500);
+}
 
 let progressionHooks = {
   onRenderCategoryNav: () => { },
   onRenderPathView: () => { },
+  onRenderPlayCategoryState: () => { },
   onSyncTopicEducateButtonUI: () => { },
   onSyncQuestionTypeUI: () => { },
   onSyncDirectionUI: () => { },
   onLoadQuestion: () => { },
   onSwitchCategory: () => { },
   onSwitchView: () => { },
+  onStageSelected: () => { },
   onHandsFreeStageComplete: () => false,
   onHandsFreeExamFailed: () => { }
 };
@@ -105,6 +119,9 @@ export function getCategoryProgress(catId = state.activeCategory) {
   }
   if (!prog.stageSkills || typeof prog.stageSkills !== 'object') {
     prog.stageSkills = {};
+  }
+  if (!prog.stageRecentOutcomes || typeof prog.stageRecentOutcomes !== 'object') {
+    prog.stageRecentOutcomes = {};
   }
   return prog;
 }
@@ -543,27 +560,6 @@ export function getA1OverallProgress() {
 export function syncProgressionUI() {
   const activeSnap = getProgressionSnapshot();
 
-  if (progressionPanelEl) {
-    progressionPanelEl.classList.remove('hidden');
-  }
-
-  const isFinalSkipped = Boolean(
-    activeSnap.isCompletedFinal &&
-    Array.isArray(activeSnap.progress?.skippedStages) &&
-    activeSnap.progress.skippedStages.includes(activeSnap.stageIndex)
-  );
-  progressionStageLabelEl.textContent = `${activeSnap.category.label} · ${activeSnap.stage.shortTitle}`;
-  progressionStageStatsEl.textContent = !activeSnap.isUnlocked
-    ? 'Locked'
-    : isFinalSkipped
-      ? 'Skipped'
-      : activeSnap.isCompletedFinal
-        ? `Mastered (${activeSnap.accRounded}%)`
-        : activeSnap.isExamStage
-          ? `Exam ${activeSnap.stageTotal}/${TOPIC_EXAM_QUESTION_COUNT} · ${activeSnap.stageTotal > 0 ? `${activeSnap.accRounded}%` : '0%'} (${TOPIC_EXAM_MIN_ACCURACY}% req)`
-          : `${activeSnap.stageCorrect}/${activeSnap.threshold} · ${activeSnap.stageTotal > 0 ? `${activeSnap.accRounded}%` : '0%'}`;
-  progressionBarFillEl.style.width = `${activeSnap.isUnlocked ? activeSnap.correctPct : 0}%`;
-
   const examBannerEl = document.getElementById('topic-exam-banner');
   if (examBannerEl) {
     const showExamBanner = Boolean(
@@ -587,7 +583,9 @@ export function syncProgressionUI() {
 
   if (stageProgressionHudEl && activeSnap.isUnlocked) {
     const formattedTopicTitle = String(activeSnap.category.label || '').replace(/^(A\d+\.\d+)\s+/, '$1 - ');
-    hudStageTitleEl.textContent = formattedTopicTitle;
+    const stageShort = activeSnap.stage?.shortTitle || activeSnap.stage?.label || `Stage ${activeSnap.stageNum}`;
+    hudStageTitleEl.textContent = `${formattedTopicTitle} · ${activeSnap.isExamStage ? stageShort : `Stage ${activeSnap.stageNum}: ${stageShort}`}`;
+    hudStageTitleEl.title = 'Click to open Guidebook and switch freely to any stage';
     hudStageTitleEl.removeAttribute('aria-expanded');
     if (hudProgressionFillEl) {
       hudProgressionFillEl.style.width = `${activeSnap.correctPct}%`;
@@ -850,6 +848,7 @@ export function closeReintroduceSkillModal() {
 export function confirmReintroduceSkill() {
   const skillKey = pendingReintroduceSkillKey;
   closeReintroduceSkillModal();
+  if (isTrackingDisabled()) return;
   const activePillars = getActiveSkillPillars();
   if (!skillKey || !activePillars.includes(skillKey)) return;
 
@@ -1082,6 +1081,7 @@ export function clearPendingProgressionModals() {
 }
 
 export function updateProgressionOnAnswer(isCorrect) {
+  if (isTrackingDisabled()) return;
   const catId = state.activeCategory;
   if (!CATEGORIES[catId] || !isCategoryUnlocked(catId)) return;
   const cfg = state.progressionConfig;
@@ -1121,8 +1121,9 @@ export function updateProgressionOnAnswer(isCorrect) {
 
   const postSnap = getProgressionSnapshot(catId);
   const completedSet = new Set(Array.isArray(prog.completedStages) ? prog.completedStages : []);
+  const wasAlreadyCompleted = completedSet.has(prog.stageIndex);
 
-  if (postSnap.canCompleteStage) {
+  if (postSnap.canCompleteStage && !wasAlreadyCompleted) {
     const wasFinalCompleted =
       prog.stageIndex >= stages.length - 1 && completedSet.has(prog.stageIndex);
 
@@ -1138,6 +1139,12 @@ export function updateProgressionOnAnswer(isCorrect) {
       };
       return acc;
     }, {});
+    if (!prog.stageRecentOutcomes || typeof prog.stageRecentOutcomes !== 'object') {
+      prog.stageRecentOutcomes = {};
+    }
+    prog.stageRecentOutcomes[prog.stageIndex] = Array.isArray(prog.recentOutcomes)
+      ? prog.recentOutcomes.slice(-60)
+      : [];
 
     const completedStageIdx = prog.stageIndex;
     const completedStageLabel = stages[completedStageIdx]?.label || `Stage ${completedStageIdx + 1}`;
@@ -1145,20 +1152,20 @@ export function updateProgressionOnAnswer(isCorrect) {
 
     if (prog.stageIndex < stages.length - 1) {
       prog.stageIndex += 1;
-      prog.skills = createEmptySkillsMap();
+      const savedNextSkills = prog.stageSkills[prog.stageIndex];
+      prog.skills = savedNextSkills
+        ? normalizeSkillsMap(savedNextSkills, 0, 0, cfg.threshold)
+        : createEmptySkillsMap();
       prog.skillTurn = 0;
-      prog.stageCorrect = 0;
-      prog.stageTotal = 0;
-      prog.recentOutcomes = [];
+      prog.stageCorrect = activePillars.reduce((sum, key) => sum + (prog.skills[key]?.correct || 0), 0);
+      prog.stageTotal = activePillars.reduce((sum, key) => sum + (prog.skills[key]?.total || 0), 0);
+      prog.recentOutcomes = Array.isArray(prog.stageRecentOutcomes[prog.stageIndex])
+        ? prog.stageRecentOutcomes[prog.stageIndex].slice(-60)
+        : [];
       const nextStage = stages[prog.stageIndex];
       const nextStageSnap = getProgressionSnapshot(catId);
 
-      if (dailyGoalMilestoneEl) {
-        dailyGoalMilestoneEl.textContent = `Unlocked: ${nextStage.label} (${nextStageSnap.phaseShort})`;
-        dailyGoalFooterEl.classList.remove('is-milestone');
-        void dailyGoalFooterEl.offsetWidth;
-        dailyGoalFooterEl.classList.add('is-milestone');
-      }
+      flashProgressionMilestone(`Unlocked: ${nextStage.label} (${nextStageSnap.phaseShort})`);
 
       openStageCompleteAwardModal({
         catId,
@@ -1188,11 +1195,8 @@ export function updateProgressionOnAnswer(isCorrect) {
           isExamStage: Boolean(postSnap.isExamStage)
         });
       }
-      if (dailyGoalMilestoneEl && !wasFinalCompleted) {
-        dailyGoalMilestoneEl.textContent = `${CATEGORIES[catId].label} Completed!`;
-        dailyGoalFooterEl.classList.remove('is-milestone');
-        void dailyGoalFooterEl.offsetWidth;
-        dailyGoalFooterEl.classList.add('is-milestone');
+      if (!wasFinalCompleted) {
+        flashProgressionMilestone(`${CATEGORIES[catId].label} Completed!`);
       }
     }
   } else if (postSnap.isExamStage && postSnap.examFailed) {
@@ -1204,19 +1208,86 @@ export function updateProgressionOnAnswer(isCorrect) {
       accRounded: postSnap.accRounded
     });
   } else {
-    if (!prevSnap.skills[activeSkillKey]?.proficient && postSnap.skills[activeSkillKey]?.proficient && dailyGoalMilestoneEl) {
+    if (!prevSnap.skills[activeSkillKey]?.proficient && postSnap.skills[activeSkillKey]?.proficient) {
       const doneMeta = SKILL_META[activeSkillKey];
-      dailyGoalMilestoneEl.textContent = `${doneMeta.label} Proficient (${postSnap.skills[activeSkillKey].correct}/${postSnap.skills[activeSkillKey].target})!`;
-      dailyGoalFooterEl.classList.remove('is-milestone');
-      void dailyGoalFooterEl.offsetWidth;
-      dailyGoalFooterEl.classList.add('is-milestone');
+      flashProgressionMilestone(`${doneMeta.label} Proficient (${postSnap.skills[activeSkillKey].correct}/${postSnap.skills[activeSkillKey].target})!`);
     }
   }
 
   syncProgressionUI();
 }
 
+export function selectStageInProgression(catId, stageIndex) {
+  const cat = CATEGORIES[catId];
+  if (!cat || !Array.isArray(cat.stages)) return null;
+  const idx = Number(stageIndex);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= cat.stages.length) return null;
+
+  const prog = getCategoryProgress(catId);
+  const cfg = state.progressionConfig || createDefaultProgressionConfig();
+  const activePillars = getActiveSkillPillars();
+  const prevIdx = Math.min(cat.stages.length - 1, Math.max(0, Number(prog.stageIndex) || 0));
+
+  // Preserve outgoing stage progress so switching stages never loses work
+  if (!prog.stageSkills || typeof prog.stageSkills !== 'object') {
+    prog.stageSkills = {};
+  }
+  if (!prog.stageRecentOutcomes || typeof prog.stageRecentOutcomes !== 'object') {
+    prog.stageRecentOutcomes = {};
+  }
+  prog.stageSkills[prevIdx] = normalizeSkillsMap(prog.skills, prog.stageCorrect || 0, prog.stageTotal || 0, cfg.threshold);
+  prog.stageRecentOutcomes[prevIdx] = Array.isArray(prog.recentOutcomes) ? prog.recentOutcomes.slice(-60) : [];
+
+  // Switch to target stage and restore any saved progress for it
+  prog.stageIndex = idx;
+  const savedTargetSkills = prog.stageSkills[idx];
+  prog.skills = savedTargetSkills
+    ? normalizeSkillsMap(savedTargetSkills, 0, 0, cfg.threshold)
+    : createEmptySkillsMap();
+  prog.recentOutcomes = Array.isArray(prog.stageRecentOutcomes[idx])
+    ? prog.stageRecentOutcomes[idx].slice(-60)
+    : [];
+  prog.stageCorrect = activePillars.reduce((sum, key) => sum + (prog.skills[key]?.correct || 0), 0);
+  prog.stageTotal = activePillars.reduce((sum, key) => sum + (prog.skills[key]?.total || 0), 0);
+  prog.skillTurn = 0;
+
+  // Switch active category & reset live question state
+  state.activeCategory = catId;
+  state.reviewFilterCat = catId;
+  state.weakDrillActive = false;
+  state.polishDrillActive = false;
+  state.revisionDrillActive = false;
+  state.practiceMode = false;
+  state.practiceQueueStageKey = '';
+  state.practiceQueueIndex = 0;
+  state.currentItem = null;
+  state.currentContext = null;
+  state.answered = false;
+
+  if (catId === 'numbers' && cat.stages[idx]?.contextMode) {
+    state.contextMode = cat.stages[idx].contextMode;
+  }
+
+  const snap = getProgressionSnapshot(catId);
+  state.direction = snap.phaseDirection;
+  state.questionType = snap.phaseQuestionType;
+
+  savePersistedData();
+  progressionHooks.onStageSelected({ catId, stageIndex: idx });
+  progressionHooks.onSyncQuestionTypeUI();
+  progressionHooks.onSyncDirectionUI();
+  progressionHooks.onRenderPlayCategoryState();
+  syncProgressionUI();
+  if (state.activeView !== 'play') {
+    progressionHooks.onSwitchView('play');
+  }
+  progressionHooks.onLoadQuestion();
+
+  return { catId, stageIndex: idx };
+}
+
 export function skipStageInProgression(catId, stageIndex) {
+  if (isTrackingDisabled()) return null;
   const cat = CATEGORIES[catId];
   if (!cat || !Array.isArray(cat.stages) || !isCategoryUnlocked(catId)) return null;
   const idx = Number(stageIndex);
@@ -1235,8 +1306,12 @@ export function skipStageInProgression(catId, stageIndex) {
   prog.completedStages = Array.from(completedSet).sort((a, b) => a - b);
   prog.skippedStages = Array.from(skippedSet).sort((a, b) => a - b);
 
+  const cfg = state.progressionConfig || createDefaultProgressionConfig();
   if (!prog.stageSkills || typeof prog.stageSkills !== 'object') {
     prog.stageSkills = {};
+  }
+  if (!prog.stageRecentOutcomes || typeof prog.stageRecentOutcomes !== 'object') {
+    prog.stageRecentOutcomes = {};
   }
   prog.stageSkills[idx] = activePillars.reduce((acc, key) => {
     acc[key] = {
@@ -1245,6 +1320,9 @@ export function skipStageInProgression(catId, stageIndex) {
     };
     return acc;
   }, {});
+  if (prog.stageIndex === idx) {
+    prog.stageRecentOutcomes[idx] = Array.isArray(prog.recentOutcomes) ? prog.recentOutcomes.slice(-60) : [];
+  }
 
   // Mark this skipped stage's Practice Gate and intro popups as done so it never blocks progression
   const stagePart = stageMeta?.stageKey || `s${idx}`;
@@ -1267,11 +1345,16 @@ export function skipStageInProgression(catId, stageIndex) {
       targetNext += 1;
     }
     prog.stageIndex = targetNext;
-    prog.skills = createEmptySkillsMap();
+    const savedNextSkills = prog.stageSkills[targetNext];
+    prog.skills = savedNextSkills
+      ? normalizeSkillsMap(savedNextSkills, 0, 0, cfg.threshold)
+      : createEmptySkillsMap();
     prog.skillTurn = 0;
-    prog.stageCorrect = 0;
-    prog.stageTotal = 0;
-    prog.recentOutcomes = [];
+    prog.stageCorrect = activePillars.reduce((sum, key) => sum + (prog.skills[key]?.correct || 0), 0);
+    prog.stageTotal = activePillars.reduce((sum, key) => sum + (prog.skills[key]?.total || 0), 0);
+    prog.recentOutcomes = Array.isArray(prog.stageRecentOutcomes[targetNext])
+      ? prog.stageRecentOutcomes[targetNext].slice(-60)
+      : [];
     nextStageIndex = targetNext;
 
     if (catId === 'numbers' && cat.stages[targetNext]?.contextMode) {
@@ -1309,38 +1392,51 @@ export function skipStageInProgression(catId, stageIndex) {
   };
 }
 
+export function undoSkipStageInProgression(catId, stageIndex) {
+  if (isTrackingDisabled()) return null;
+  const cat = CATEGORIES[catId];
+  if (!cat || !Array.isArray(cat.stages)) return null;
+  const idx = Number(stageIndex);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= cat.stages.length) return null;
+
+  const prog = getCategoryProgress(catId);
+  const skippedSet = new Set(Array.isArray(prog.skippedStages) ? prog.skippedStages : []);
+  if (!skippedSet.has(idx)) return null;
+
+  const completedSet = new Set(Array.isArray(prog.completedStages) ? prog.completedStages : []);
+  skippedSet.delete(idx);
+  completedSet.delete(idx);
+  prog.skippedStages = Array.from(skippedSet).sort((a, b) => a - b);
+  prog.completedStages = Array.from(completedSet).sort((a, b) => a - b);
+  prog.completed = prog.completedStages.length >= cat.stages.length;
+
+  const stageMeta = cat.stages[idx];
+  const stagePart = stageMeta?.stageKey || `s${idx}`;
+  if (state.completedPracticeStages instanceof Set) {
+    state.completedPracticeStages.delete(`${catId}:${stagePart}`);
+  }
+  if (state.skippedIntroStages instanceof Set) {
+    state.skippedIntroStages.delete(`${catId}:${idx}`);
+  }
+
+  savePersistedData();
+  syncProgressionUI();
+  if (catId === state.activeCategory) {
+    progressionHooks.onSyncQuestionTypeUI();
+    progressionHooks.onSyncDirectionUI();
+  }
+  return { catId, stageIndex: idx };
+}
+
 export function initProgressionModule(hooks = {}) {
   registerProgressionHooks(hooks);
 
-  if (hudStageSeenEl) {
-    hudStageSeenEl.addEventListener('click', openStageSeenModal);
-  }
   const seenBackdropEl = document.getElementById('stage-seen-modal-backdrop');
   const seenCloseX = document.getElementById('stage-seen-close-x');
   if (seenCloseX) seenCloseX.addEventListener('click', closeStageSeenModal);
   if (seenBackdropEl) {
     seenBackdropEl.addEventListener('click', (e) => {
       if (e.target === seenBackdropEl) closeStageSeenModal();
-    });
-  }
-
-  if (stageSkillTrackEl) {
-    stageSkillTrackEl.querySelectorAll('.skill-step-pill').forEach((pill) => {
-      const handleActivate = () => {
-        if (!pill.classList.contains('is-done')) return;
-        const skillKey = pill.dataset.skill;
-        if (!skillKey) return;
-        openReintroduceSkillModal(skillKey);
-      };
-      pill.addEventListener('click', handleActivate);
-      pill.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          if (pill.classList.contains('is-done')) {
-            e.preventDefault();
-            handleActivate();
-          }
-        }
-      });
     });
   }
 

@@ -144,9 +144,9 @@ function speakEnglishViaBrowser(text, rateOverride = null, { onEnd = null, speec
     settled = true;
     if (watchdog !== null) {
       clearTimeout(watchdog);
+      if (activeSpeechWatchdog === watchdog) activeSpeechWatchdog = null;
       watchdog = null;
     }
-    if (activeSpeechWatchdog === watchdog) activeSpeechWatchdog = null;
     if (typeof onEnd === 'function') {
       const stillCurrent = speechToken === null || speechToken === activeSpeechToken;
       onEnd(Boolean(completed && stillCurrent));
@@ -263,49 +263,6 @@ function speakSingleChunk(cleanText, rateOverride = null, { onEnd = null, lang =
     return;
   }
   const isEnglish = String(lang || 'es').toLowerCase().startsWith('en');
-  if (state.ttsEngine === 'local') {
-    const rate = rateOverride !== null ? rateOverride : (isEnglish ? 1.0 : (Number(state.speechRate) || 1));
-    const gender = state.currentVoiceGender === 'male' ? 'male' : 'female';
-    const langParam = isEnglish ? 'en' : 'es';
-    const url = `http://127.0.0.1:8765/tts?text=${encodeURIComponent(cleanText)}&gender=${encodeURIComponent(gender)}&rate=${encodeURIComponent(String(rate))}&lang=${encodeURIComponent(langParam)}`;
-    try {
-      const audio = new Audio(url);
-      audio.volume = Math.min(1, Math.max(0, Number(state.volume)));
-      activeLocalTtsAudio = audio;
-      audio.onended = () => {
-        if (activeLocalTtsAudio === audio) activeLocalTtsAudio = null;
-        const stillCurrent = speechToken === null || speechToken === activeSpeechToken;
-        if (typeof onEnd === 'function') onEnd(stillCurrent);
-      };
-      audio.onerror = () => {
-        if (activeLocalTtsAudio === audio) activeLocalTtsAudio = null;
-        if (speechToken !== null && speechToken !== activeSpeechToken) {
-          if (typeof onEnd === 'function') onEnd(false);
-          return;
-        }
-        if (isEnglish) {
-          speakEnglishViaBrowser(cleanText, rateOverride, { onEnd, speechToken });
-        } else {
-          speakSpanishViaBrowser(cleanText, rateOverride, { onEnd, speechToken });
-        }
-      };
-      audio.play().catch(() => {
-        if (activeLocalTtsAudio === audio) activeLocalTtsAudio = null;
-        if (speechToken !== null && speechToken !== activeSpeechToken) {
-          if (typeof onEnd === 'function') onEnd(false);
-          return;
-        }
-        if (isEnglish) {
-          speakEnglishViaBrowser(cleanText, rateOverride, { onEnd, speechToken });
-        } else {
-          speakSpanishViaBrowser(cleanText, rateOverride, { onEnd, speechToken });
-        }
-      });
-      return;
-    } catch {
-      // Fall back to browser SpeechSynthesis
-    }
-  }
   if (isEnglish) {
     speakEnglishViaBrowser(cleanText, rateOverride, { onEnd, speechToken });
   } else {
@@ -556,6 +513,25 @@ export function playCorrectSound(preset = state.correctSound) {
   }
 }
 
+export function playFullAnswerBonusSound(preset = state.correctSound) {
+  playCorrectSound(preset);
+  if (state.sfxVolume <= 0) return;
+  const ctx = getSfxContext();
+  if (!ctx) return;
+  // Bright ascending celebratory sparkle shimmer layered right after the correct chime
+  const notes = [880, 1108.73, 1318.51, 1760];
+  notes.forEach((freq, idx) => {
+    scheduleSfxTone(ctx, {
+      type: idx === notes.length - 1 ? 'sine' : 'triangle',
+      freq,
+      delay: 0.14 + idx * 0.055,
+      duration: idx === notes.length - 1 ? 0.52 : 0.24,
+      gain: idx === notes.length - 1 ? 0.13 : 0.1,
+      filterFreq: 3200
+    });
+  });
+}
+
 export function playAchievementFanfare() {
   if (state.sfxVolume <= 0) return;
   const ctx = getSfxContext();
@@ -575,7 +551,7 @@ export function playAchievementFanfare() {
 }
 
 export function playListeningReadyChime() {
-  if (state.sfxVolume <= 0 || state.handsFreeEarcons === false) return;
+  if (state.sfxVolume <= 0) return;
   const ctx = getSfxContext();
   if (!ctx) return;
   scheduleSfxTone(ctx, { type: 'sine', freq: 587.33, delay: 0, duration: 0.065, gain: 0.11, filterFreq: 2200 });
@@ -583,14 +559,14 @@ export function playListeningReadyChime() {
 }
 
 export function playCaptureLockedSound() {
-  if (state.sfxVolume <= 0 || state.handsFreeEarcons === false) return;
+  if (state.sfxVolume <= 0) return;
   const ctx = getSfxContext();
   if (!ctx) return;
   scheduleSfxTone(ctx, { type: 'triangle', freq: 440, endFreq: 370, delay: 0, duration: 0.055, gain: 0.08, filterFreq: 1400 });
 }
 
 export function playHandsFreePausedSound() {
-  if (state.sfxVolume <= 0 || state.handsFreeEarcons === false) return;
+  if (state.sfxVolume <= 0) return;
   const ctx = getSfxContext();
   if (!ctx) return;
   scheduleSfxTone(ctx, { type: 'sine', freq: 523.25, delay: 0, duration: 0.08, gain: 0.11, filterFreq: 1800 });

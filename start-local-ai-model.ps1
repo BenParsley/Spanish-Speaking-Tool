@@ -78,11 +78,16 @@ $ServerWindowStyle = if ($Minimized) { 'Minimized' } else { 'Normal' }
 # 3. Start Local AI Scorer (127.0.0.1:8765) with automatic hot-reload
 Write-Host "Starting Local AI Scorer (hot-reload enabled) on http://127.0.0.1:8765 ..." -ForegroundColor Green
 $ScorerRunner = Join-Path $ScorerDir 'run_server.py'
+$EscScorerDir = $ScorerDir -replace "'", "''"
+$EscVenvPython = $VenvPython -replace "'", "''"
+$EscScorerRunner = $ScorerRunner -replace "'", "''"
+$EscSpeechDir = $SpeechDir -replace "'", "''"
+$EscServeScript = $ServeScript -replace "'", "''"
 $ScorerCommand = @"
 `$Host.UI.RawUI.WindowTitle = 'Local AI Scorer (127.0.0.1:8765 · Hot Reload)'
-Set-Location -LiteralPath '$ScorerDir'
+Set-Location -LiteralPath '$EscScorerDir'
 Write-Host 'Starting Local AI Scorer (hot-reload enabled) on http://127.0.0.1:8765 ...' -ForegroundColor Green
-& '$VenvPython' '$ScorerRunner'
+& '$EscVenvPython' '$EscScorerRunner'
 "@
 Start-Process -FilePath $ShellExe -WorkingDirectory $ScorerDir -WindowStyle $ServerWindowStyle -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-Command', $ScorerCommand)
 
@@ -90,9 +95,9 @@ Start-Process -FilePath $ShellExe -WorkingDirectory $ScorerDir -WindowStyle $Ser
 Write-Host "Starting Speech-Only Web App on $TargetUrl ..." -ForegroundColor Cyan
 $WebCommand = @"
 `$Host.UI.RawUI.WindowTitle = 'Spanish A1 Speech-Only Web App (localhost:8001)'
-Set-Location -LiteralPath '$SpeechDir'
+Set-Location -LiteralPath '$EscSpeechDir'
 Write-Host 'Starting Speech-Only Web App on $TargetUrl ...' -ForegroundColor Cyan
-py '$ServeScript' 8001
+& '$EscVenvPython' '$EscServeScript' 8001
 "@
 Start-Process -FilePath $ShellExe -WorkingDirectory $SpeechDir -WindowStyle $ServerWindowStyle -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-Command', $WebCommand)
 Start-Sleep -Seconds 1

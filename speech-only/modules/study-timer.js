@@ -3,7 +3,7 @@ import {
   studyTimerStateEl,
   studyTimerValueEl
 } from './dom.js';
-import { savePersistedData, state } from './state.js';
+import { isTrackingDisabled, savePersistedData, state } from './state.js';
 import { formatDurationSeconds, getLocalDateKey } from './utils.js';
 
 export const STUDY_IDLE_TIMEOUT_MS = 10000;
@@ -47,7 +47,8 @@ export function getTodayActiveSeconds() {
 export function updateStudyTimerUI() {
   const todaySecs = getTodayActiveSeconds();
   const formatted = formatDurationSeconds(todaySecs);
-  const isRunning = studyTimerState.isRunning;
+  const trackingOff = isTrackingDisabled();
+  const isRunning = !trackingOff && studyTimerState.isRunning;
 
   if (studyTimerValueEl) {
     studyTimerValueEl.textContent = formatted;
@@ -65,6 +66,7 @@ export function updateStudyTimerUI() {
 }
 
 export function addActiveStudySeconds(dateKey, wholeSeconds) {
+  if (isTrackingDisabled()) return;
   if (!wholeSeconds || wholeSeconds <= 0) return;
   if (!state.dailyActiveSeconds || typeof state.dailyActiveSeconds !== 'object') {
     state.dailyActiveSeconds = {};
@@ -74,6 +76,12 @@ export function addActiveStudySeconds(dateKey, wholeSeconds) {
 }
 
 export function flushStudyTimerDelta(now = Date.now()) {
+  if (isTrackingDisabled()) {
+    studyTimerState.isRunning = false;
+    studyTimerState.carryMs = 0;
+    updateStudyTimerUI();
+    return;
+  }
   if (!studyTimerState.isRunning) return;
 
   const cutoff = studyTimerState.lastAnswerAt + STUDY_IDLE_TIMEOUT_MS;
@@ -107,6 +115,10 @@ export function flushStudyTimerDelta(now = Date.now()) {
 }
 
 export function markStudyActivity() {
+  if (isTrackingDisabled()) {
+    updateStudyTimerUI();
+    return;
+  }
   const now = Date.now();
   if (studyTimerState.isRunning) {
     flushStudyTimerDelta(now);

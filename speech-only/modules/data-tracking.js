@@ -21,7 +21,7 @@ import {
   updateSrsForNumber,
   updateSrsForPhraseItem
 } from './srs.js';
-import { getQuestionSkillBucket, savePersistedData, state } from './state.js';
+import { getQuestionSkillBucket, isTrackingDisabled, savePersistedData, state } from './state.js';
 import { getTodayActiveSeconds, markStudyActivity } from './study-timer.js';
 import {
   DAILY_CORRECT_GOAL,
@@ -74,6 +74,7 @@ export function getCanonicalWordTrackingKey(catId, itemOrNum) {
 }
 
 export function recordWordFirstShown(catId, itemOrNum, { save = true, dateKey = getLocalDateKey() } = {}) {
+  if (isTrackingDisabled()) return false;
   const key = getCanonicalWordTrackingKey(catId, itemOrNum);
   if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return false;
   if (!state.wordFirstSeenDate || typeof state.wordFirstSeenDate !== 'object') {
@@ -594,6 +595,7 @@ export function ensureExtensionEntry(extensionRating) {
 }
 
 export function recordExtensionPronunciationSample(extensionRating) {
+  if (isTrackingDisabled()) return;
   if (!extensionRating || typeof extensionRating.score !== 'number' || !Number.isFinite(extensionRating.score)) {
     return;
   }
@@ -608,6 +610,7 @@ export function recordExtensionPronunciationSample(extensionRating) {
 }
 
 export function recordExtensionOutcome(extensionRating, { pronunciationAlreadyRecorded = false } = {}) {
+  if (isTrackingDisabled()) return;
   const entry = ensureExtensionEntry(extensionRating);
   if (!entry) return;
   const todayKey = getLocalDateKey();
@@ -633,6 +636,7 @@ export function recordPronunciationAttempt(
   pronunciationScore,
   { needsImprovement = false, weakChars = null, charDetails = null, extensionRating = null } = {}
 ) {
+  if (isTrackingDisabled()) return;
   if (typeof pronunciationScore !== 'number' || !Number.isFinite(pronunciationScore)) return;
   const clampedScore = Math.min(100, Math.max(0, Math.round(pronunciationScore)));
   const todayKey = getLocalDateKey();
@@ -749,6 +753,7 @@ export function applyOutcomeToItemEntry({
   reviewSet,
   updateSrsFn,
   isCorrect,
+  skipped = false,
   skillBucket,
   todayKey,
   pronunciationScore,
@@ -759,6 +764,9 @@ export function applyOutcomeToItemEntry({
     countsMap[key] = createDefaultItemEntry();
   }
   const entry = countsMap[key];
+  if (skipped) {
+    entry.skipped = Math.max(0, Math.floor(Number(entry.skipped) || 0)) + 1;
+  }
   entry.streaks = normalizeSkillStreaks(entry.streaks, entry.correct);
   entry.seenSkills = normalizeSeenSkills(entry.seenSkills, entry.streaks);
   entry.seenSkills[skillBucket] = true;
@@ -822,6 +830,7 @@ export function recordOutcome(
     skipped = false
   } = {}
 ) {
+  if (isTrackingDisabled()) return;
   markStudyActivity();
   state.totalAnswered += 1;
   const todayKey = getLocalDateKey();
@@ -894,6 +903,7 @@ export function recordOutcome(
         reviewSet: state.reviewSet,
         updateSrsFn: updateSrsForNumber,
         isCorrect,
+        skipped,
         skillBucket,
         todayKey,
         pronunciationScore,
@@ -920,6 +930,7 @@ export function recordOutcome(
         reviewSet: state.phraseReviewSet,
         updateSrsFn: updateSrsForPhraseItem,
         isCorrect,
+        skipped,
         skillBucket,
         todayKey,
         pronunciationScore,

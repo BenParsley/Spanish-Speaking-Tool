@@ -331,27 +331,19 @@ export function resolveActivePhraseItem() {
 
   const currentValid =
     state.currentItem && catItems.some((it) => it.id === state.currentItem.id);
+  if (currentValid) {
+    return state.currentItem;
+  }
 
   if (
     typeof promptValueEl !== 'undefined' &&
     promptValueEl &&
     !promptValueEl.classList.contains('hidden')
   ) {
-    const visibleRaw = String(promptValueEl.textContent || '').trim();
+    const visibleRaw = String(promptValueEl.textContent || '').replace(/\+/g, '').trim();
     if (visibleRaw) {
       const normEs = normalizePhraseSpanish(visibleRaw);
       const normEn = normalizePhraseEnglish(visibleRaw);
-      if (
-        currentValid &&
-        ((state.currentInstance &&
-          state.currentInstance.itemId === state.currentItem.id &&
-          (normalizePhraseSpanish(state.currentInstance.es) === normEs ||
-            normalizePhraseEnglish(state.currentInstance.en) === normEn)) ||
-          normalizePhraseSpanish(state.currentItem.es) === normEs ||
-          normalizePhraseEnglish(state.currentItem.en) === normEn)
-      ) {
-        return state.currentItem;
-      }
       const matched = catItems.find(
         (it) =>
           normalizePhraseSpanish(it.es) === normEs ||
@@ -362,10 +354,6 @@ export function resolveActivePhraseItem() {
         return matched;
       }
     }
-  }
-
-  if (currentValid) {
-    return state.currentItem;
   }
 
   const pool = getPoolForPhraseCategory(state.activeCategory, state.range);

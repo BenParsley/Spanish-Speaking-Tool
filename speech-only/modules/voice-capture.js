@@ -45,6 +45,27 @@ import {
 import { savePersistedData, state } from './state.js';
 
 const LOCAL_SCORER_URL = 'http://127.0.0.1:8765';
+const HEALTH_FETCH_TIMEOUT_MS = 6000;
+const COMMAND_FETCH_TIMEOUT_MS = 15000;
+const SCORE_FETCH_TIMEOUT_MS = 30000;
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = SCORE_FETCH_TIMEOUT_MS) {
+  if (typeof AbortController === 'undefined') {
+    return fetch(url, options);
+  }
+  const controller = new AbortController();
+  const timerId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err && err.name === 'AbortError') {
+      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timerId);
+  }
+}
 
 export function isLocalScorerActive() {
   return (state.pronunciationEngine || 'local') === 'local';
@@ -283,6 +304,8 @@ let voiceHooks = {
   onRecordPronunciationAttempt: () => { },
   onPlayCorrectSound: () => { },
   onPlayIncorrectSound: () => { },
+  onFullAnswerReward: () => { },
+  onClearFullAnswerReward: () => { },
   onStartFeedbackProgressBar: () => { },
   onPauseFeedbackForPlayback: () => { },
   onShowIncorrectScreen: () => { },
@@ -363,7 +386,7 @@ export async function checkLocalScorerHealth({ isStartup = false } = {}) {
   const t0 = performance.now();
   try {
     logSpeechEvent('HEALTH', `GET ${LOCAL_SCORER_URL}/health`);
-    const res = await fetch(`${LOCAL_SCORER_URL}/health`);
+    const res = await fetchWithTimeout(`${LOCAL_SCORER_URL}/health`, {}, HEALTH_FETCH_TIMEOUT_MS);
     const clientMs = Math.round(performance.now() - t0);
     const data = await res.json();
     if (!res.ok || !data?.ok) {
@@ -387,10 +410,10 @@ export async function checkLocalScorerHealth({ isStartup = false } = {}) {
           checkLocalScorerHealth({ isStartup: true });
         }
       }, 2000);
-    } else if (data.ffmpegAvailable === false) {
+    } else if (data.ffmpegAvailable === false && data.pyavDecode === false) {
       voiceCaptureState.localScorerStatus = 'ffmpeg-missing';
       if (scorerLoadingBannerEl) scorerLoadingBannerEl.classList.add('hidden');
-      logSpeechEvent('HEALTH', `Server reachable (${clientMs} ms) — FFmpeg missing from PATH`, data, 'error');
+      logSpeechEvent('HEALTH', `Server reachable (${clientMs} ms) — neither PyAV nor FFmpeg available`, data, 'error');
     } else {
       voiceCaptureState.localScorerStatus = 'ready';
       if (scorerLoadingBannerEl) scorerLoadingBannerEl.classList.add('hidden');
@@ -560,7 +583,7 @@ function startVoiceMeter(stream, fillEl, isQuestion = false, vadOpts = {}) {
   const data = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
 
   const isHandsFreeActive = Boolean(isQuestion && (vadOpts.handsFree || voiceHooks.isHandsFreeRunning()));
-  const useVad = Boolean(isQuestion && (isHandsFreeActive || state.handsFreeVad));
+  const useVad = Boolean(isQuestion && isHandsFreeActive);
   const purpose = vadOpts.purpose || 'answer';
   const expectedWordCount = Math.max(1, Number(vadOpts.expectedWordCount) || 1);
 
@@ -581,9 +604,7 @@ function startVoiceMeter(stream, fillEl, isQuestion = false, vadOpts = {}) {
   if (useVad) {
     const startMs = performance.now();
     const calibrationMs = 240;
-    const baseSilenceMs = [900, 1300, 1800, 2400].includes(Number(state.handsFreeSilenceMs))
-      ? Number(state.handsFreeSilenceMs)
-      : 1300;
+    const baseSilenceMs = 1300;
     const effectiveSilenceMs = baseSilenceMs + (purpose === 'answer' && expectedWordCount >= 5 ? 300 : 0);
     const noSpeechTimeoutMs =
       typeof voiceCaptureState.testNoSpeechTimeoutMs === 'number' && voiceCaptureState.testNoSpeechTimeoutMs > 0
@@ -715,16 +736,22 @@ function startVoiceMeter(stream, fillEl, isQuestion = false, vadOpts = {}) {
 
 export function stopVoicePlayback(target = 'all') {
   if ((target === 'all' || target === 'test') && voiceCaptureState.testAudioEl) {
+    voiceCaptureState.testAudioEl.onended = null;
+    voiceCaptureState.testAudioEl.onerror = null;
     voiceCaptureState.testAudioEl.pause();
     voiceCaptureState.testAudioEl.currentTime = 0;
     voiceCaptureState.testAudioEl = null;
     if (testMicPlaybackBtn) testMicPlaybackBtn.textContent = 'Play Mic';
   }
   if ((target === 'all' || target === 'question') && voiceCaptureState.lastSubmittedAudioEl) {
+    voiceCaptureState.lastSubmittedAudioEl.onended = null;
+    voiceCaptureState.lastSubmittedAudioEl.onerror = null;
     voiceCaptureState.lastSubmittedAudioEl.pause();
     voiceCaptureState.lastSubmittedAudioEl.currentTime = 0;
     voiceCaptureState.lastSubmittedAudioEl = null;
     if (playMyAudioBtn) playMyAudioBtn.textContent = 'Play Mine';
+    const incPlayMineBtn = document.getElementById('incorrect-screen-play-mine-btn');
+    if (incPlayMineBtn) incPlayMineBtn.textContent = 'Play Mine';
   }
 }
 
@@ -997,14 +1024,15 @@ export function playLastSubmittedAudio(triggerBtnEl = null) {
   audio.volume = Math.min(1, Math.max(0.1, Number(state.volume) || 1));
   voiceCaptureState.lastSubmittedAudioEl = audio;
   if (btn) btn.textContent = 'Stop Mine';
-  audio.onended = () => {
-    voiceCaptureState.lastSubmittedAudioEl = null;
+  const resetPlayback = () => {
+    if (voiceCaptureState.lastSubmittedAudioEl === audio) {
+      voiceCaptureState.lastSubmittedAudioEl = null;
+    }
     if (btn) btn.textContent = 'Play Mine';
   };
-  audio.play().catch(() => {
-    voiceCaptureState.lastSubmittedAudioEl = null;
-    if (btn) btn.textContent = 'Play Mine';
-  });
+  audio.onended = resetPlayback;
+  audio.onerror = resetPlayback;
+  audio.play().catch(resetPlayback);
 }
 
 export function cancelActiveQuestionRecording(reason = 'Cancelled active recording') {
@@ -1088,6 +1116,9 @@ export function resetQuestionVoiceCapture({ resetAttempts = true, resetRetry = t
   if (panamaPhoneticsTipEl) {
     panamaPhoneticsTipEl.textContent = '';
     panamaPhoneticsTipEl.classList.add('hidden');
+  }
+  if (typeof voiceHooks.onClearFullAnswerReward === 'function') {
+    voiceHooks.onClearFullAnswerReward();
   }
   if (!state.answered && typeAnswerFeedbackEl) {
     typeAnswerFeedbackEl.textContent = 'Feedback bar';
@@ -1276,6 +1307,7 @@ export async function startVoiceCapture(
   if (typeof MediaRecorder !== 'undefined') {
     try {
       const recorder = new MediaRecorder(stream);
+      const localChunks = [];
       voiceCaptureState.recorder = recorder;
       logSpeechEvent('RECORDER', `MediaRecorder started (${recorder.mimeType || 'default mime'})`, {
         target,
@@ -1285,7 +1317,8 @@ export async function startVoiceCapture(
       });
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
-          voiceCaptureState.chunks.push(e.data);
+          localChunks.push(e.data);
+          voiceCaptureState.chunks = localChunks;
         }
       };
       recorder.onstop = () => {
@@ -1293,21 +1326,22 @@ export async function startVoiceCapture(
         if (voiceCaptureState.recorder === recorder) {
           voiceCaptureState.recorder = null;
         }
-        if (target === 'question' && voiceCaptureState.cancelPendingRecording) {
+        if (target === 'question' && (voiceCaptureState.cancelPendingRecording || state.activeView !== 'play')) {
           voiceCaptureState.cancelPendingRecording = false;
+          localChunks.length = 0;
           voiceCaptureState.chunks = [];
-          logSpeechEvent('RECORDER', 'Recording cancelled — audio chunks discarded.', null, 'warn');
+          logSpeechEvent('RECORDER', 'Recording cancelled or left Play view — audio chunks discarded.', null, 'warn');
           return;
         }
-        const blob = new Blob(voiceCaptureState.chunks, {
+        const blob = new Blob(localChunks, {
           type: recorder.mimeType || 'audio/webm'
         });
-        logSpeechEvent('RECORDER', `MediaRecorder stopped (${blob.size} bytes, chunks=${voiceCaptureState.chunks.length})`, {
+        logSpeechEvent('RECORDER', `MediaRecorder stopped (${blob.size} bytes, chunks=${localChunks.length})`, {
           target,
           purpose: isCommandCapture ? 'command' : 'answer',
           bytes: blob.size,
           mimeType: blob.type || recorder.mimeType || 'audio/webm',
-          chunkCount: voiceCaptureState.chunks.length
+          chunkCount: localChunks.length
         });
         if (target === 'question') {
           if (isCommandCapture) {
@@ -1609,7 +1643,11 @@ async function resolveHandsFreeVoiceChoiceFromAudio(audioBlob) {
     formData.append('altExpectedEs', '[]');
     formData.append('mode', 'scripted');
     formData.append('minScore', '70');
-    const res = await fetch(`${LOCAL_SCORER_URL}/score-pronunciation`, { method: 'POST', body: formData });
+    const res = await fetchWithTimeout(
+      `${LOCAL_SCORER_URL}/score-pronunciation`,
+      { method: 'POST', body: formData },
+      COMMAND_FETCH_TIMEOUT_MS
+    );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const parsed = await res.json();
     const heard = String(parsed.heard || '').trim();
@@ -1693,9 +1731,7 @@ async function previewSpokenWithLocalScorer(audioBlob) {
   });
 
   try {
-    const minScore = [70, 80, 90].includes(Number(state.scoringThreshold))
-      ? Number(state.scoringThreshold)
-      : 90;
+    const minScore = 90;
     const formData = new FormData();
     formData.append('audio', audioBlob, 'recording.webm');
     formData.append('expectedEs', expectedEs);
@@ -1716,10 +1752,11 @@ async function previewSpokenWithLocalScorer(audioBlob) {
     formData.append('mode', mode);
     formData.append('minScore', String(minScore));
 
-    const res = await fetch(reqUrl, {
-      method: 'POST',
-      body: formData
-    });
+    const res = await fetchWithTimeout(
+      reqUrl,
+      { method: 'POST', body: formData },
+      SCORE_FETCH_TIMEOUT_MS
+    );
     const clientMs = Math.round(performance.now() - t0);
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
@@ -1812,11 +1849,17 @@ async function previewSpokenWithLocalScorer(audioBlob) {
     const rawCharDetails = Array.isArray(dbg.gop?.charDetails) ? dbg.gop.charDetails : [];
 
     // Base-only rating: when a question has an extension (fill word / quantity noun / slot option),
-    // rate ONLY the base for pass/fail & pronunciation score, and track the extension separately.
+    // ONLY require the base for pass/fail & pronunciation score.
+    // Track the extension in the mastery table ONLY if the user actually included it,
+    // and trigger an additional visual reward when both base & extension are answered correctly!
     const baseOnlyRated = Boolean(
       !skipped && !isCommand && questionSplit?.hasExtension && questionSplit.baseEs && questionSplit.extensionEs
     );
     let extensionRating = null;
+    let extensionIncluded = false;
+    let fullAnswerBonus = false;
+    let bonusExtensionLabelEs = '';
+    let bonusExtensionScore = null;
     let baseCharDetails = rawCharDetails;
     let effectiveWeakChars = weakCharsArr;
 
@@ -1829,10 +1872,15 @@ async function previewSpokenWithLocalScorer(audioBlob) {
           .replace(/[¿¡?!.,;:()"'-]/g, ' ')
           .replace(/\s+/g, ' ')
           .trim();
+      const baseRescoredOnly = Boolean(parsed.baseRescoredOnly);
       const baseIdxSet = new Set((questionSplit.baseWordIndices || []).map(Number));
       const extIdxSet = new Set((questionSplit.extensionWordIndices || []).map(Number));
-      const splitBaseChars = rawCharDetails.filter((c) => baseIdxSet.has(Number(c?.wordIndex)));
-      const splitExtChars = rawCharDetails.filter((c) => extIdxSet.has(Number(c?.wordIndex)));
+      const splitBaseChars = baseRescoredOnly
+        ? rawCharDetails
+        : rawCharDetails.filter((c) => baseIdxSet.has(Number(c?.wordIndex)));
+      const splitExtChars = baseRescoredOnly
+        ? []
+        : rawCharDetails.filter((c) => extIdxSet.has(Number(c?.wordIndex)));
       if (splitBaseChars.length > 0) {
         baseCharDetails = splitBaseChars;
       }
@@ -1849,6 +1897,7 @@ async function previewSpokenWithLocalScorer(audioBlob) {
           ? Math.min(100, Math.max(0, Math.round(Number(parsed.baseScore))))
           : score;
         extMatched = Boolean(parsed.extensionMatched);
+        extensionIncluded = Boolean(parsed.extensionIncluded ?? parsed.extensionMatched);
         extScoreVal = Number.isFinite(Number(parsed.extensionScore))
           ? Math.min(100, Math.max(0, Math.round(Number(parsed.extensionScore))))
           : 0;
@@ -1859,10 +1908,14 @@ async function previewSpokenWithLocalScorer(audioBlob) {
         const baseCands = [questionSplit.baseEs, ...(questionSplit.baseAltEs || [])]
           .map(normClean)
           .filter(Boolean);
-        if (!baseMatched && heardNorm) {
-          baseMatched = baseCands.some((bc) => heardNorm === bc || paddedHeard.includes(` ${bc} `));
+        const matchedBaseCand = heardNorm
+          ? baseCands.find((bc) => heardNorm === bc || paddedHeard.includes(` ${bc} `))
+          : '';
+        if (!baseMatched && matchedBaseCand) {
+          baseMatched = true;
         }
-        const extNorm = normClean(questionSplit.extensionEs);
+        const isAnySlotExt = questionSplit.extensionEs === '__slot_any__';
+        const extNorm = isAnySlotExt ? '' : normClean(questionSplit.extensionEs);
         const spokenExtMatch =
           typeof voiceHooks.resolveSpokenExtensionInfo === 'function'
             ? voiceHooks.resolveSpokenExtensionInfo(heard, parsed.scoredTargetEs)
@@ -1870,8 +1923,13 @@ async function previewSpokenWithLocalScorer(audioBlob) {
         extMatched = Boolean(
           spokenExtMatch ||
           (heardNorm && extNorm && (heardNorm === extNorm || paddedHeard.includes(` ${extNorm} `))) ||
-          (!wrongWord && splitExtChars.length > 0)
+          (!wrongWord && splitExtChars.length > 0 && (!isAnySlotExt || heardNorm.split(' ').length > normClean(questionSplit.baseEs).split(' ').length))
         );
+        const leftoverAfterBase =
+          baseMatched && matchedBaseCand && !extMatched && !isAnySlotExt
+            ? heardNorm.replace(matchedBaseCand, ' ').replace(/\s+/g, ' ').trim()
+            : '';
+        extensionIncluded = extMatched || leftoverAfterBase.length > 0;
         if (splitBaseChars.length > 0) {
           baseScoreVal = Math.min(
             100,
@@ -1881,18 +1939,23 @@ async function previewSpokenWithLocalScorer(audioBlob) {
             )
           );
         }
-        if (splitExtChars.length > 0) {
-          extScoreVal = Math.min(
-            100,
-            Math.max(
-              0,
-              Math.round(splitExtChars.reduce((s, c) => s + (Number(c?.score) || 0), 0) / splitExtChars.length)
-            )
-          );
+        if (extensionIncluded) {
+          if (splitExtChars.length > 0) {
+            extScoreVal = Math.min(
+              100,
+              Math.max(
+                0,
+                Math.round(splitExtChars.reduce((s, c) => s + (Number(c?.score) || 0), 0) / splitExtChars.length)
+              )
+            );
+          } else {
+            extScoreVal = extMatched ? score : 0;
+          }
+          extPassedVal = Boolean(extMatched && extScoreVal >= passThreshold);
         } else {
-          extScoreVal = extMatched ? score : 0;
+          extScoreVal = 0;
+          extPassedVal = false;
         }
-        extPassedVal = Boolean(extMatched && extScoreVal >= passThreshold);
       }
 
       wrongWord = !baseMatched;
@@ -1907,16 +1970,28 @@ async function previewSpokenWithLocalScorer(audioBlob) {
         typeof voiceHooks.resolveSpokenExtensionInfo === 'function'
           ? voiceHooks.resolveSpokenExtensionInfo(heard, parsed.scoredTargetEs)
           : null;
-      extensionRating = {
-        key: resolvedSpokenExt?.key || questionSplit.extensionKey,
-        catId: resolvedSpokenExt?.catId || questionSplit.catId,
-        es: resolvedSpokenExt?.es || questionSplit.extensionLabelEs || questionSplit.extensionEs,
-        en: resolvedSpokenExt?.en || questionSplit.extensionLabelEn || questionSplit.extensionEn,
-        group: resolvedSpokenExt?.group || questionSplit.extensionGroup || '',
-        isCorrect: Boolean(extPassedVal),
-        score: Math.min(100, Math.max(0, Math.round(extScoreVal))),
-        needsImprovement: Boolean(extPassedVal && extScoreVal < 90)
-      };
+      const trackInMastery = questionSplit.trackExtensionInMastery !== false;
+      fullAnswerBonus = Boolean(isCorrect && extensionIncluded && extPassedVal);
+      bonusExtensionLabelEs =
+        resolvedSpokenExt?.es ||
+        (questionSplit.extensionEs === '__slot_any__'
+          ? ''
+          : (questionSplit.extensionLabelEs || questionSplit.extensionEs));
+      bonusExtensionScore = extensionIncluded ? Math.min(100, Math.max(0, Math.round(extScoreVal))) : null;
+
+      // Only track extension in Mastery Table when the user actually included it!
+      if (extensionIncluded && trackInMastery) {
+        extensionRating = {
+          key: resolvedSpokenExt?.key || questionSplit.extensionKey,
+          catId: resolvedSpokenExt?.catId || questionSplit.catId,
+          es: resolvedSpokenExt?.es || questionSplit.extensionLabelEs || questionSplit.extensionEs,
+          en: resolvedSpokenExt?.en || questionSplit.extensionLabelEn || questionSplit.extensionEn,
+          group: resolvedSpokenExt?.group || questionSplit.extensionGroup || '',
+          isCorrect: Boolean(extPassedVal),
+          score: Math.min(100, Math.max(0, Math.round(extScoreVal))),
+          needsImprovement: Boolean(extPassedVal && extScoreVal < 90)
+        };
+      }
     }
 
     const needsPronunciationImprovement = Boolean(
@@ -1953,6 +2028,10 @@ async function previewSpokenWithLocalScorer(audioBlob) {
       weakChars: effectiveWeakChars,
       baseOnlyRated,
       baseEs: baseOnlyRated ? questionSplit.baseEs : '',
+      extensionIncluded,
+      fullAnswerBonus,
+      bonusExtensionLabelEs,
+      bonusExtensionScore,
       extensionRating,
       panamaNormalization: dbg.panamaNormalization || null,
       rawResponse: parsed
@@ -2092,6 +2171,10 @@ export function commitLocalPronunciationResult() {
     baseCharDetails,
     weakChars,
     baseOnlyRated,
+    extensionIncluded,
+    fullAnswerBonus,
+    bonusExtensionLabelEs,
+    bonusExtensionScore,
     extensionRating,
     panamaNormalization
   } = result;
@@ -2169,18 +2252,29 @@ export function commitLocalPronunciationResult() {
     if (voiceRedoBtn) voiceRedoBtn.disabled = true;
     const targetSpoken = expectedEs || voiceHooks.getSpokenText();
     logSpeechEvent('COMMAND', `Voice command "${voiceCommand.toUpperCase()}" detected (heard="${heard}").`);
-    if (typeof voiceHooks.onHandsFreeVoiceCommand === 'function') {
-      const handled = voiceHooks.onHandsFreeVoiceCommand(voiceCommand, { heard, expectedEs: targetSpoken });
-      if (handled) return;
-    }
-    if (isRepeatCmd) {
-      if (typeAnswerFeedbackEl) {
-        typeAnswerFeedbackEl.textContent = `Listening model: "${targetSpoken}" — speak when ready!`;
-        typeAnswerFeedbackEl.classList.remove('is-invisible', 'is-correct', 'is-incorrect', 'is-warning');
-        typeAnswerFeedbackEl.classList.add('is-transcript');
+    const fallbackUnrecognizedCmd = () => {
+      if (isRepeatCmd && (state.practiceMode || (!voiceHooks.isHardTopicExamActive() && (voiceCaptureState.attemptCount > 0 || voiceCaptureState.retryRoundUsed)))) {
+        if (typeAnswerFeedbackEl) {
+          typeAnswerFeedbackEl.textContent = `Listening model: "${targetSpoken}" — speak when ready!`;
+          typeAnswerFeedbackEl.classList.remove('is-invisible', 'is-correct', 'is-incorrect', 'is-warning');
+          typeAnswerFeedbackEl.classList.add('is-transcript');
+        }
+        speakSpanish(targetSpoken);
+      } else if (typeAnswerFeedbackEl && !state.answered) {
+        typeAnswerFeedbackEl.textContent = `Voice command "${voiceCommand}" heard — speak your Spanish answer when ready.`;
+        typeAnswerFeedbackEl.classList.remove('is-invisible', 'is-correct', 'is-incorrect', 'is-transcript');
+        typeAnswerFeedbackEl.classList.add('is-warning');
       }
-      speakSpanish(targetSpoken);
+    };
+    if (typeof voiceHooks.onHandsFreeVoiceCommand === 'function') {
+      Promise.resolve(voiceHooks.onHandsFreeVoiceCommand(voiceCommand, { heard, expectedEs: targetSpoken }))
+        .then((handled) => {
+          if (!handled) fallbackUnrecognizedCmd();
+        })
+        .catch(() => fallbackUnrecognizedCmd());
+      return;
     }
+    fallbackUnrecognizedCmd();
     return;
   }
 
@@ -2244,7 +2338,19 @@ export function commitLocalPronunciationResult() {
     if (voiceRedoBtn) voiceRedoBtn.disabled = true;
     syncNextQuestionButtonUI();
 
-    if (isCorrect) {
+    if (isCorrect && fullAnswerBonus) {
+      if (typeof voiceHooks.onFullAnswerReward === 'function') {
+        voiceHooks.onFullAnswerReward({
+          extensionEs: bonusExtensionLabelEs,
+          extensionScore: bonusExtensionScore,
+          baseScore: score,
+          trackedInMastery: false,
+          isPractice: true
+        });
+      } else {
+        voiceHooks.onPlayCorrectSound();
+      }
+    } else if (isCorrect) {
       voiceHooks.onPlayCorrectSound();
     } else {
       voiceHooks.onPlayIncorrectSound();
@@ -2255,15 +2361,23 @@ export function commitLocalPronunciationResult() {
         voiceHooks.onPracticeItemSpoken({
           isCorrect,
           scoredTargetEs: expectedEs,
-          heard
+          heard,
+          extensionIncluded: Boolean(extensionIncluded)
         }) || { justCompleted: false };
     }
 
     if (typeAnswerFeedbackEl) {
       typeAnswerFeedbackEl.classList.remove('is-invisible', 'is-correct', 'is-incorrect', 'is-warning', 'is-transcript');
-      if (isCorrect) {
+      if (isCorrect && fullAnswerBonus) {
+        const extBit = bonusExtensionLabelEs
+          ? ` (+ "${bonusExtensionLabelEs}"${Number.isFinite(bonusExtensionScore) ? ` ${bonusExtensionScore}/100` : ''})`
+          : ' (Base + Extension)';
+        typeAnswerFeedbackEl.textContent = `★ Practice · Correct! (${score}/100) · Full Answer Bonus${extBit} — Click Next Word →`;
+        typeAnswerFeedbackEl.classList.add('is-correct', 'is-full-answer-bonus');
+      } else if (isCorrect) {
         const improveBit = needsPronunciationImprovement ? ' · Could be improved' : '';
-        typeAnswerFeedbackEl.textContent = `Practice · ${score}/100${improveBit} — Speak again or click Next Word →`;
+        const baseBit = baseOnlyRated ? ' · Base' : '';
+        typeAnswerFeedbackEl.textContent = `Practice · Correct! (${score}/100${baseBit})${improveBit} — Speak again or click Next Word →`;
         typeAnswerFeedbackEl.classList.add('is-correct');
       } else if (wrongWord) {
         const heardPart = heardTranslation ? `Heard "${heardTranslation}"` : 'Different word';
@@ -2318,16 +2432,28 @@ export function commitLocalPronunciationResult() {
       pronunciationAlreadyRecorded: recordedPronSample,
       weakChars,
       charDetails: baseOnlyRated ? (baseCharDetails || charDetails) : charDetails,
+      extensionIncluded: Boolean(extensionIncluded),
+      fullAnswerBonus: Boolean(fullAnswerBonus),
       extensionRating,
       extensionPronunciationAlreadyRecorded: Boolean(recordedPronSample && extensionRating),
       scoredTargetEs: expectedEs,
       heard
     });
-    voiceHooks.onPlayCorrectSound();
+    if (fullAnswerBonus && typeof voiceHooks.onFullAnswerReward === 'function') {
+      voiceHooks.onFullAnswerReward({
+        extensionEs: bonusExtensionLabelEs,
+        extensionScore: bonusExtensionScore,
+        baseScore: score,
+        trackedInMastery: Boolean(extensionRating),
+        isPractice: false
+      });
+    } else {
+      voiceHooks.onPlayCorrectSound();
+    }
 
     logSpeechEvent(
       'COMMIT',
-      `Committed Hybrid verdict: CORRECT${needsPronunciationImprovement ? ' (Pronunciation could be improved)' : ''} · score=${score}/100 · target="${expectedEs}" · heard="${heard}"`,
+      `Committed Hybrid verdict: CORRECT${fullAnswerBonus ? ' (FULL ANSWER BONUS)' : ''}${needsPronunciationImprovement ? ' (Pronunciation could be improved)' : ''} · score=${score}/100 · target="${expectedEs}" · heard="${heard}"`,
       {
         engine: 'local',
         isCorrect: true,
@@ -2343,6 +2469,8 @@ export function commitLocalPronunciationResult() {
         retryRoundUsed: voiceCaptureState.retryRoundUsed,
         pronunciationScoreRecorded: score,
         baseOnlyRated: Boolean(baseOnlyRated),
+        extensionIncluded: Boolean(extensionIncluded),
+        fullAnswerBonus: Boolean(fullAnswerBonus),
         extensionRating: extensionRating || null
       },
       'info'
@@ -2350,15 +2478,31 @@ export function commitLocalPronunciationResult() {
 
     inputShellEl.classList.remove('incorrect');
     inputShellEl.classList.add('correct');
+    if (fullAnswerBonus) {
+      inputShellEl.classList.add('is-full-answer-bonus');
+    }
     if (typeAnswerFeedbackEl) {
-      if (baseOnlyRated && extensionRating) {
-        const extStatus = extensionRating.isCorrect
-          ? `Ext "${extensionRating.es}" ${extensionRating.score}/100`
-          : `Ext "${extensionRating.es}" ${extensionRating.score}/100 (tracked separately)`;
+      if (fullAnswerBonus) {
+        const extTag = bonusExtensionLabelEs
+          ? `+ "${bonusExtensionLabelEs}"${Number.isFinite(bonusExtensionScore) ? ` ${bonusExtensionScore}/100` : ''}`
+          : '+ Extension included';
         if (needsPronunciationImprovement) {
-          typeAnswerFeedbackEl.textContent = `Base Correct (${score}/100) · Pronunciation could be improved · ${extStatus}`;
+          typeAnswerFeedbackEl.textContent = `★ Correct! (${score}/100) · Pronunciation could be improved · Full Answer Bonus (${extTag})`;
         } else {
-          typeAnswerFeedbackEl.textContent = `Base Correct (${score}/100) · ${extStatus}`;
+          typeAnswerFeedbackEl.textContent = `★ Correct! (${score}/100) · Full Answer Bonus (${extTag})`;
+        }
+      } else if (baseOnlyRated && extensionRating) {
+        const extStatus = `Extension "${extensionRating.es}" ${extensionRating.score}/100 (tracked in mastery)`;
+        if (needsPronunciationImprovement) {
+          typeAnswerFeedbackEl.textContent = `Correct! (${score}/100) · Pronunciation could be improved · ${extStatus}`;
+        } else {
+          typeAnswerFeedbackEl.textContent = `Correct! (${score}/100) · Base passed · ${extStatus}`;
+        }
+      } else if (baseOnlyRated) {
+        if (needsPronunciationImprovement) {
+          typeAnswerFeedbackEl.textContent = `Correct! (${score}/100) · Pronunciation could be improved · Base answered`;
+        } else {
+          typeAnswerFeedbackEl.textContent = `Correct! (${score}/100) · Base answered`;
         }
       } else if (needsPronunciationImprovement) {
         const cleanTip = tipText && !/could be improved/i.test(tipText) ? ` — ${tipText}` : '';
@@ -2370,6 +2514,9 @@ export function commitLocalPronunciationResult() {
       }
       typeAnswerFeedbackEl.classList.remove('is-invisible', 'is-correct', 'is-incorrect', 'is-warning', 'is-transcript');
       typeAnswerFeedbackEl.classList.add('is-correct');
+      if (fullAnswerBonus) {
+        typeAnswerFeedbackEl.classList.add('is-full-answer-bonus');
+      }
     }
     voiceHooks.onStartFeedbackProgressBar(true);
     return;
@@ -2385,6 +2532,7 @@ export function commitLocalPronunciationResult() {
     pronunciationAlreadyRecorded: recordedPronSample,
     weakChars,
     charDetails: baseOnlyRated ? (baseCharDetails || charDetails) : charDetails,
+    extensionIncluded: Boolean(extensionIncluded),
     extensionRating,
     extensionPronunciationAlreadyRecorded: Boolean(recordedPronSample && extensionRating)
   };
@@ -2422,6 +2570,7 @@ export function commitLocalPronunciationResult() {
         pronunciationAlreadyRecorded: recordedPronSample,
         weakChars,
         charDetails: baseOnlyRated ? (baseCharDetails || charDetails) : charDetails,
+        extensionIncluded: Boolean(extensionIncluded),
         extensionRating,
         extensionPronunciationAlreadyRecorded: Boolean(recordedPronSample && extensionRating)
       });
@@ -2601,10 +2750,11 @@ export function initVoiceCapture(hooks = {}) {
 
   if (pronunciationEngineSelectEl) {
     pronunciationEngineSelectEl.value = state.pronunciationEngine === 'browser' ? 'browser' : 'local';
+    setSpeechConsoleStats({ engine: state.pronunciationEngine });
     pronunciationEngineSelectEl.addEventListener('change', (e) => {
       const prev = state.pronunciationEngine;
       state.pronunciationEngine = e.target.value === 'browser' ? 'browser' : 'local';
-      savePersistedData();
+      setSpeechConsoleStats({ engine: state.pronunciationEngine });
       logSpeechEvent('ENGINE', `Switched Pronunciation Engine: ${prev} -> ${state.pronunciationEngine}`);
       checkLocalScorerHealth();
     });
@@ -2670,14 +2820,15 @@ export function initVoiceCapture(hooks = {}) {
       audio.volume = Math.min(1, Math.max(0.1, Number(state.volume) || 1));
       voiceCaptureState.lastSubmittedAudioEl = audio;
       playMyAudioBtn.textContent = 'Stop Mine';
-      audio.onended = () => {
-        voiceCaptureState.lastSubmittedAudioEl = null;
+      const resetMyAudio = () => {
+        if (voiceCaptureState.lastSubmittedAudioEl === audio) {
+          voiceCaptureState.lastSubmittedAudioEl = null;
+        }
         playMyAudioBtn.textContent = 'Play Mine';
       };
-      audio.play().catch(() => {
-        voiceCaptureState.lastSubmittedAudioEl = null;
-        playMyAudioBtn.textContent = 'Play Mine';
-      });
+      audio.onended = resetMyAudio;
+      audio.onerror = resetMyAudio;
+      audio.play().catch(resetMyAudio);
     });
   }
 
@@ -2831,14 +2982,15 @@ export function initVoiceCapture(hooks = {}) {
       audio.volume = Math.min(1, Math.max(0.1, Number(state.volume) || 1));
       voiceCaptureState.testAudioEl = audio;
       testMicPlaybackBtn.textContent = 'Stop';
-      audio.onended = () => {
-        voiceCaptureState.testAudioEl = null;
+      const resetTestAudio = () => {
+        if (voiceCaptureState.testAudioEl === audio) {
+          voiceCaptureState.testAudioEl = null;
+        }
         testMicPlaybackBtn.textContent = 'Play Mic';
       };
-      audio.play().catch(() => {
-        voiceCaptureState.testAudioEl = null;
-        testMicPlaybackBtn.textContent = 'Play Mic';
-      });
+      audio.onended = resetTestAudio;
+      audio.onerror = resetTestAudio;
+      audio.play().catch(resetTestAudio);
     });
   }
 

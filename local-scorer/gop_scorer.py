@@ -27,11 +27,13 @@ class PanamaGOPScorer:
         Converts Spanish text into CTC token items while respecting Spanish
         digraphs (ch, ll, rr, silent-u qu/gu) and Panamanian phonetic context.
         """
-        clean = re.sub(r"[¿?¡!.,;:()'\"-]", "", text.lower()).strip()
+        clean = re.sub(r"[/\\]", " ", text.lower())
+        clean = re.sub(r"[¿?¡!.,;:()'\"-]", "", clean).strip()
         clean = re.sub(r"\s+", " ", clean)
 
         items: list[dict] = []
         word_idx = 0
+        word_has_tokens = False
         group_id = 0
         i = 0
         n = len(clean)
@@ -39,7 +41,9 @@ class PanamaGOPScorer:
         while i < n:
             ch = clean[i]
             if ch == " ":
-                word_idx += 1
+                if word_has_tokens:
+                    word_idx += 1
+                    word_has_tokens = False
                 i += 1
                 continue
 
@@ -81,6 +85,7 @@ class PanamaGOPScorer:
                     "is_jota": False,
                     "is_digraph": True,
                 })
+                word_has_tokens = True
                 i += 2
                 continue
 
@@ -110,6 +115,7 @@ class PanamaGOPScorer:
                         "is_jota": False,
                         "is_digraph": True,
                     })
+                    word_has_tokens = True
                 i += 2
                 continue
 
@@ -133,6 +139,7 @@ class PanamaGOPScorer:
                         "is_jota": False,
                         "is_digraph": True,
                     })
+                    word_has_tokens = True
                 i += 2
                 continue
 
@@ -156,6 +163,7 @@ class PanamaGOPScorer:
                         "is_jota": False,
                         "is_digraph": True,
                     })
+                word_has_tokens = True
                 i += 2
                 continue
 
@@ -179,6 +187,7 @@ class PanamaGOPScorer:
                         "is_jota": False,
                         "is_digraph": True,
                     })
+                word_has_tokens = True
                 i += 2
                 continue
 
@@ -224,6 +233,7 @@ class PanamaGOPScorer:
                 "is_jota": is_jota,
                 "is_digraph": False,
             })
+            word_has_tokens = True
             i += 1
 
         return items
@@ -341,6 +351,22 @@ class PanamaGOPScorer:
         min_score: int = 90,
         enable_prosody: bool = True,
     ) -> dict:
+        if audio_16k is None or getattr(audio_16k, "size", 0) < 400:
+            items = self._text_to_token_items(target_text)
+            return {
+                "score": 0,
+                "accuracy": 0,
+                "fluency": 0,
+                "ctc_heard": "",
+                "weak_chars": [],
+                "char_details": [],
+                "fluency_details": {},
+                "prosody": {},
+                "total_frames": 0,
+                "aligned_tokens": 0,
+                "expected_tokens": len(items),
+                "feedback": "Recording too short — hold and speak clearly into the mic.",
+            }
         inputs = self.processor(audio_16k, sampling_rate=16000, return_tensors="pt")
         logits = self.model(inputs.input_values.to(self.device)).logits[0]
         log_probs = F.log_softmax(logits, dim=-1).cpu().numpy()

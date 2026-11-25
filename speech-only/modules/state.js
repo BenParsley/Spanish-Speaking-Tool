@@ -22,6 +22,7 @@ export const persisted = loadPersistedData();
 
 export const state = {
   speakOnlyMode: true,
+  trackingDisabled: false,
   activeView: 'play',      // 'play' | 'path' | 'stats'
   activeCategory: persisted.activeCategory,
   progressPaused: false,
@@ -39,8 +40,6 @@ export const state = {
   reviewSet: new Set(persisted.review),
   phraseMasteredSet: new Set(persisted.phraseMastered || []),
   phraseReviewSet: new Set(persisted.phraseReview || []),
-  theme: persisted.theme,
-  blurLockedContent: persisted.blurLockedContent !== false,
   seenTopicGuides: new Set(persisted.seenTopicGuides || []),
   introducedItems: new Set(persisted.introducedItems || []),
   skippedIntroWords: new Set(persisted.skippedIntroWords || []),
@@ -67,30 +66,21 @@ export const state = {
   activityBarNotes: persisted.activityBarNotes,
   speechRate: persisted.speechRate,
   micDeviceId: persisted.micDeviceId || '',
-  pronunciationEngine: persisted.pronunciationEngine === 'browser' ? 'browser' : 'local',
-  scoringThreshold: [70, 80, 90].includes(Number(persisted.scoringThreshold))
-    ? Number(persisted.scoringThreshold)
-    : 90,
-  handsFreeVad: Boolean(persisted.handsFreeVad),
+  // Always start in Local Hybrid ('local') on page load/refresh; runtime switches stay in-memory only
+  pronunciationEngine: 'local',
   handsFreeMode: false,
   handsFreeReadPrompt: persisted.handsFreeReadPrompt !== false,
-  handsFreeSilenceMs: [900, 1300, 1800, 2400].includes(Number(persisted.handsFreeSilenceMs))
-    ? Number(persisted.handsFreeSilenceMs)
-    : 1300,
-  handsFreeIncorrectPolicy: ['auto-retry', 'voice-choice', 'auto-continue'].includes(persisted.handsFreeIncorrectPolicy)
-    ? persisted.handsFreeIncorrectPolicy
-    : 'auto-retry',
-  handsFreeEarcons: persisted.handsFreeEarcons !== false,
-  handsFreeCooldownMs: [250, 350, 550].includes(Number(persisted.handsFreeCooldownMs))
-    ? Number(persisted.handsFreeCooldownMs)
-    : 350,
-  handsFreePauseOnStage: Boolean(persisted.handsFreePauseOnStage),
-  shadowingMode: Boolean(persisted.shadowingMode),
-  pushToTalk: persisted.pushToTalk !== false,
-  ttsEngine: persisted.ttsEngine === 'local' ? 'local' : 'browser',
   weakDrillActive: false,
   polishDrillActive: false,
+  revisionDrillActive: false,
   practiceMode: false,
+  sessionQuestionSeq: 0,
+  currentQuestionSkipRecorded: false,
+  lastSkippedBaseKey: '',
+  lastSkippedExpectedEs: '',
+  recentSkipQuestionsByKey: {},
+  skipCooldownUntilByKey: {},
+  skipBanTierByKey: {},
   sessionStats: {
     startedAt: Date.now(),
     answered: 0,
@@ -267,66 +257,67 @@ function saveRollingDailySnapshot(payloadObj) {
   }
 }
 
-export function getRollingSnapshots() {
-  try {
-    const raw = localStorage.getItem(SNAPSHOTS_STORAGE_KEY);
-    if (!raw) return [];
-    const map = JSON.parse(raw);
-    if (!map || typeof map !== 'object') return [];
-    return Object.entries(map)
-      .filter(([, v]) => v && v.payload)
-      .sort(([a], [b]) => b.localeCompare(a))
-      .map(([dateKey, v]) => ({
-        dateKey,
-        savedAt: v.savedAt || '',
-        totalAnswered: Number(v.totalAnswered) || 0,
-        payload: v.payload
-      }));
-  } catch {
-    return [];
+export function isTrackingDisabled() {
+  return Boolean(state.trackingDisabled);
+}
+
+export function buildProgressExportPayload() {
+  const activeProfile = getActiveProfilePayload();
+  return {
+    appMode: 'speech-only',
+    exportedAt: new Date().toISOString(),
+    ...activeProfile,
+    speakOnlyMode: true,
+    autoplay: state.autoplay,
+    speed: state.speed,
+    dailyGoal: state.dailyGoal,
+    volume: state.volume,
+    sfxVolume: state.sfxVolume,
+    correctSound: state.correctSound,
+    incorrectSound: state.incorrectSound,
+    speechRate: state.speechRate,
+    micDeviceId: state.micDeviceId,
+    pronunciationEngine: 'local',
+    handsFreeReadPrompt: state.handsFreeReadPrompt !== false,
+    strictAccents: state.strictAccents
+  };
+}
+
+export function importProgressPayload(rawObj) {
+  if (!rawObj || typeof rawObj !== 'object' || Array.isArray(rawObj)) {
+    return { ok: false, error: 'Invalid JSON backup format.' };
   }
+  const hasProgressKeys =
+    'counts' in rawObj ||
+    'phraseCounts' in rawObj ||
+    'categoryProgress' in rawObj ||
+    'dailyCounts' in rawObj;
+  if (!hasProgressKeys) {
+    return { ok: false, error: 'File does not contain valid progress data.' };
+  }
+
+  applyProfileToState(rawObj);
+  if (typeof rawObj.autoplay === 'boolean') state.autoplay = rawObj.autoplay;
+  if (Number.isFinite(Number(rawObj.speed)) && Number(rawObj.speed) > 0) state.speed = Number(rawObj.speed);
+  if (Number.isFinite(Number(rawObj.dailyGoal)) && Number(rawObj.dailyGoal) > 0) state.dailyGoal = Number(rawObj.dailyGoal);
+  if (Number.isFinite(Number(rawObj.volume))) state.volume = Math.min(1, Math.max(0, Number(rawObj.volume)));
+  if (Number.isFinite(Number(rawObj.sfxVolume))) state.sfxVolume = Math.min(1, Math.max(0, Number(rawObj.sfxVolume)));
+  if (rawObj.correctSound !== undefined) state.correctSound = String(rawObj.correctSound);
+  if (rawObj.incorrectSound !== undefined) state.incorrectSound = String(rawObj.incorrectSound);
+  if (typeof rawObj.handsFreeReadPrompt === 'boolean') state.handsFreeReadPrompt = rawObj.handsFreeReadPrompt;
+  if (typeof rawObj.strictAccents === 'boolean') state.strictAccents = rawObj.strictAccents;
+
+  if (!state.trackingDisabled) {
+    savePersistedData();
+  }
+  return { ok: true, totalAnswered: Number(state.totalAnswered) || 0 };
 }
 
 export function savePersistedData() {
+  if (state.trackingDisabled) return;
   try {
-    const activeProfile = getActiveProfilePayload();
-    const payload = {
-      appMode: 'speech-only',
-      ...activeProfile,
-      speakOnlyMode: true,
-      theme: state.theme,
-      blurLockedContent: state.blurLockedContent,
-      autoplay: state.autoplay,
-      speed: state.speed,
-      dailyGoal: state.dailyGoal,
-      volume: state.volume,
-      sfxVolume: state.sfxVolume,
-      correctSound: state.correctSound,
-      incorrectSound: state.incorrectSound,
-      speechRate: state.speechRate,
-      micDeviceId: state.micDeviceId,
-      pronunciationEngine: state.pronunciationEngine || 'local',
-      scoringThreshold: [70, 80, 90].includes(Number(state.scoringThreshold))
-        ? Number(state.scoringThreshold)
-        : 90,
-      handsFreeVad: Boolean(state.handsFreeVad),
-      handsFreeReadPrompt: state.handsFreeReadPrompt !== false,
-      handsFreeSilenceMs: [900, 1300, 1800, 2400].includes(Number(state.handsFreeSilenceMs))
-        ? Number(state.handsFreeSilenceMs)
-        : 1300,
-      handsFreeIncorrectPolicy: ['auto-retry', 'voice-choice', 'auto-continue'].includes(state.handsFreeIncorrectPolicy)
-        ? state.handsFreeIncorrectPolicy
-        : 'auto-retry',
-      handsFreeEarcons: state.handsFreeEarcons !== false,
-      handsFreeCooldownMs: [250, 350, 550].includes(Number(state.handsFreeCooldownMs))
-        ? Number(state.handsFreeCooldownMs)
-        : 350,
-      handsFreePauseOnStage: Boolean(state.handsFreePauseOnStage),
-      shadowingMode: Boolean(state.shadowingMode),
-      pushToTalk: state.pushToTalk !== false,
-      ttsEngine: state.ttsEngine === 'local' ? 'local' : 'browser',
-      strictAccents: state.strictAccents
-    };
+    const payload = buildProgressExportPayload();
+    delete payload.exportedAt;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     if ((Number(payload.totalAnswered) || 0) > 0) {
       saveRollingDailySnapshot(payload);
