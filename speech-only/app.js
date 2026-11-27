@@ -164,6 +164,10 @@ import {
   setPathExpandedUnitId
 } from './modules/path-view.js';
 import {
+  createDefaultProgressionConfig,
+  normalizeProgressionConfig
+} from './modules/progression-core.js';
+import {
   clearPendingProgressionModals,
   closeNextStagePreviewModal,
   closeReintroduceSkillModal,
@@ -178,6 +182,7 @@ import {
   initProgressionModule,
   isBlockingProgressionModalOpen,
   isTopicExamActive,
+  recalibrateAllTopicsFromStats,
   syncProgressionUI,
   updateProgressionOnAnswer
 } from './modules/progression.js';
@@ -205,6 +210,7 @@ import {
   isCategoryUnlocked,
   isTrackingDisabled,
   persisted,
+  resetAllProgressData,
   savePersistedData,
   state
 } from './modules/state.js';
@@ -226,6 +232,7 @@ import {
 import { initStudyTimer, markStudyActivity, pauseStudyTimerNow, updateStudyTimerUI } from './modules/study-timer.js';
 import {
   escapeHtmlText,
+  getLocalDateKey,
   getPctTierClass,
   normalizePhraseEnglish,
   normalizePhraseSpanish,
@@ -677,40 +684,9 @@ function clearFullAnswerVisualReward() {
   }
 }
 
-function triggerFullAnswerVisualReward({
-  extensionEs = '',
-  extensionScore = null,
-  trackedInMastery = true,
-  isPractice = false
-} = {}) {
+function triggerFullAnswerVisualReward() {
+  // Keep the unique audio chime only; use normal correct answer visuals with no yellow/gold accent
   playFullAnswerBonusSound();
-  const promptZoneEl = document.querySelector('.prompt-zone');
-  if (stageCardEl) stageCardEl.classList.add('is-full-answer-bonus');
-  if (promptZoneEl) promptZoneEl.classList.add('is-full-answer-bonus');
-  if (inputShellEl) inputShellEl.classList.add('is-full-answer-bonus');
-  if (typeAnswerFeedbackEl) typeAnswerFeedbackEl.classList.add('is-full-answer-bonus');
-  if (feedbackDrawerEl) feedbackDrawerEl.classList.add('is-full-answer-bonus');
-
-  if (fullAnswerRewardBannerEl) {
-    const extChipText = extensionEs
-      ? `+ ${extensionEs}${Number.isFinite(Number(extensionScore)) ? ` · ${Math.round(Number(extensionScore))}%` : ''}`
-      : '+ Extension Included';
-    const trackedBit =
-      trackedInMastery && !isPractice
-        ? '<span class="full-answer-reward-tracked">· Tracked in Mastery</span>'
-        : '';
-    fullAnswerRewardBannerEl.innerHTML = `
-      <span class="full-answer-reward-star" aria-hidden="true">★</span>
-      <span class="full-answer-reward-title">Full Answer Bonus!</span>
-      <span class="full-answer-reward-chip">${escapeHtmlText(extChipText)}</span>
-      ${trackedBit}
-    `;
-    fullAnswerRewardBannerEl.classList.remove('hidden');
-    // Restart animation cleanly
-    fullAnswerRewardBannerEl.style.animation = 'none';
-    void fullAnswerRewardBannerEl.offsetWidth;
-    fullAnswerRewardBannerEl.style.animation = '';
-  }
 }
 
 function renderPromptValueWithSplit(fallbackText, { allowSplit = true } = {}) {
@@ -1543,8 +1519,126 @@ function syncWeakDrillBannerUI() {
   }
 }
 
+function syncStageUnlockCalibrationUI() {
+  const cfg = normalizeProgressionConfig(state.progressionConfig);
+  state.progressionConfig = cfg;
+  const volSel = document.getElementById('stage-volume-mult-select');
+  const winSel = document.getElementById('stage-window-mult-select');
+  const accRange = document.getElementById('stage-min-acc-range');
+  const accValEl = document.getElementById('stage-min-acc-value');
+  const previewEl = document.getElementById('stage-unlock-preview');
+
+  if (volSel) volSel.value = String(cfg.volumeMultiplier);
+  if (winSel) winSel.value = String(cfg.windowMultiplier);
+  if (accRange) accRange.value = String(cfg.minAccuracy);
+  if (accValEl) accValEl.textContent = `${cfg.minAccuracy}%`;
+
+  if (previewEl) {
+    const snap = getProgressionSnapshot(state.activeCategory);
+    const activeSkill = snap?.activeSkill || snap?.skills?.speak;
+    if (snap?.isExamStage) {
+      previewEl.textContent = 'Final Exams stay fixed at 30 Qs · 90% to pass.';
+    } else if (activeSkill) {
+      const itemsN = activeSkill.stageItemCount || 12;
+      const winSize = activeSkill.rollingWindowSize || Math.round(itemsN * cfg.windowMultiplier);
+      const reqInWin = Math.ceil((cfg.minAccuracy / 100) * winSize);
+      previewEl.textContent = `Current stage (${itemsN} items): ${activeSkill.target} correct · ${reqInWin}/${winSize} (${cfg.minAccuracy}%)`;
+    }
+  }
+}
+
+function syncDataManagementUI() {
+  const autoBtn = document.getElementById('auto-export-toggle-btn');
+  const autoLbl = document.getElementById('auto-export-toggle-label');
+  const pathInp = document.getElementById('auto-export-path-input');
+  const isOn = state.autoExportEnabled !== false;
+  if (autoBtn) {
+    autoBtn.classList.toggle('is-on', isOn);
+    autoBtn.setAttribute('aria-checked', String(isOn));
+  }
+  if (autoLbl) {
+    autoLbl.textContent = isOn ? 'On' : 'Off';
+  }
+  if (pathInp) {
+    pathInp.value = typeof state.autoExportPath === 'string' ? state.autoExportPath : '';
+  }
+}
+
+async function performProgressExport({ isAuto = false } = {}) {
+  const payload = buildProgressExportPayload();
+  const dateTag = getLocalDateKey();
+  const filename = isAuto
+    ? `panamanian-spanish-auto-backup-${dateTag}.json`
+    : `panamanian-spanish-progress-${dateTag}.json`;
+  const customDir = typeof state.autoExportPath === 'string' ? state.autoExportPath.trim() : '';
+
+  if (customDir) {
+    try {
+      const resp = await fetch('/__export_backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ directory: customDir, filename, data: payload })
+      });
+      if (resp.ok) {
+        const json = await resp.json();
+        if (json?.ok) {
+          return true;
+        }
+      }
+    } catch {
+      // Fall through to standard browser download if local endpoint is unavailable
+    }
+  }
+
+  try {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function handleQuestionRecordedForAutoExport() {
+  if (isTrackingDisabled() || state.autoExportEnabled === false) return;
+  state.autoExportQuestionCount = (Number(state.autoExportQuestionCount) || 0) + 1;
+  if (state.autoExportQuestionCount % 10 === 0) {
+    performProgressExport({ isAuto: true });
+  }
+}
+
+let pendingDataConfirmAction = null;
+
+function closeDataConfirmModal() {
+  pendingDataConfirmAction = null;
+  const backdrop = document.getElementById('data-confirm-modal-backdrop');
+  if (backdrop) backdrop.classList.add('hidden');
+}
+
+function openDataConfirmModal({ title = 'Confirm Action', message = 'Are you sure?', confirmLabel = 'Confirm', onConfirm = null } = {}) {
+  const backdrop = document.getElementById('data-confirm-modal-backdrop');
+  const titleEl = document.getElementById('data-confirm-modal-title');
+  const descEl = document.getElementById('data-confirm-modal-desc');
+  const okBtn = document.getElementById('data-confirm-ok-btn');
+  if (!backdrop) return;
+  if (titleEl) titleEl.textContent = title;
+  if (descEl) descEl.textContent = message;
+  if (okBtn) okBtn.textContent = confirmLabel;
+  pendingDataConfirmAction = typeof onConfirm === 'function' ? onConfirm : null;
+  backdrop.classList.remove('hidden');
+}
+
 function syncSpeechPreferencesUI() {
   syncHandsFreeUI();
+  syncStageUnlockCalibrationUI();
+  syncDataManagementUI();
 }
 
 let currentIncorrectDisplayText = '';
@@ -1773,6 +1867,8 @@ function loadQuestion() {
   if (answerInputEl) {
     answerInputEl.placeholder = 'Type your answer...';
   }
+  const feedbackBarRowEl = document.getElementById('feedback-bar-row');
+  if (feedbackBarRowEl) feedbackBarRowEl.classList.add('hidden');
   feedbackDrawerEl.classList.remove('is-invisible', 'is-correct', 'is-incorrect');
   feedbackBarEl.style.transition = 'none';
   feedbackBarEl.style.width = '0%';
@@ -2023,6 +2119,8 @@ function getCorrectAnswerDisplay() {
 
 function startFeedbackProgressBar(isCorrect) {
   clearFeedbackTimer();
+  const feedbackBarRowEl = document.getElementById('feedback-bar-row');
+  if (feedbackBarRowEl) feedbackBarRowEl.classList.remove('hidden');
   feedbackDrawerEl.classList.remove('is-invisible', 'is-correct', 'is-incorrect');
   feedbackDrawerEl.classList.add(isCorrect ? 'is-correct' : 'is-incorrect');
   state.progressPaused = false;
@@ -3242,35 +3340,52 @@ function wireAppEventListeners() {
     });
   }
 
-  // Progress Export / Import JSON inside Settings -> Developer Tools
+  // Ensure only one settings-accordion is open at a time
+  if (settingsPopoverEl) {
+    const accordions = Array.from(settingsPopoverEl.querySelectorAll('details.settings-accordion'));
+    accordions.forEach((acc) => {
+      acc.addEventListener('toggle', () => {
+        if (!acc.open) return;
+        accordions.forEach((other) => {
+          if (other !== acc && other.open) other.open = false;
+        });
+      });
+    });
+  }
+
+  // Data Management (Export, Import, Delete w/ Confirmation, Auto-Export & Download Path)
   const exportProgressBtn = document.getElementById('export-progress-btn');
   const importProgressBtn = document.getElementById('import-progress-btn');
+  const deleteProgressBtn = document.getElementById('delete-progress-btn');
   const importProgressFileInput = document.getElementById('import-progress-file-input');
-  const progressBackupStatusEl = document.getElementById('progress-backup-status');
+  const autoExportToggleBtn = document.getElementById('auto-export-toggle-btn');
+  const autoExportPathInput = document.getElementById('auto-export-path-input');
+  const autoExportPathSaveBtn = document.getElementById('auto-export-path-save-btn');
+  const dataConfirmBackdrop = document.getElementById('data-confirm-modal-backdrop');
+  const dataConfirmCancelBtn = document.getElementById('data-confirm-cancel-btn');
+  const dataConfirmOkBtn = document.getElementById('data-confirm-ok-btn');
 
-  const setBackupStatus = (msg, isError = false) => {
-    if (!progressBackupStatusEl) return;
-    progressBackupStatusEl.textContent = msg;
-    progressBackupStatusEl.style.color = isError ? 'var(--danger)' : 'var(--success)';
-  };
+  const setBackupStatus = () => {};
+
+  if (dataConfirmCancelBtn) {
+    dataConfirmCancelBtn.addEventListener('click', closeDataConfirmModal);
+  }
+  if (dataConfirmBackdrop) {
+    dataConfirmBackdrop.addEventListener('click', (e) => {
+      if (e.target === dataConfirmBackdrop) closeDataConfirmModal();
+    });
+  }
+  if (dataConfirmOkBtn) {
+    dataConfirmOkBtn.addEventListener('click', () => {
+      const fn = pendingDataConfirmAction;
+      closeDataConfirmModal();
+      if (typeof fn === 'function') fn();
+    });
+  }
 
   if (exportProgressBtn) {
     exportProgressBtn.addEventListener('click', () => {
-      try {
-        const payload = buildProgressExportPayload();
-        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `panamanian-spanish-progress-${getLocalDateKey()}.json`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        setBackupStatus('Progress exported.');
-      } catch {
-        setBackupStatus('Export failed.', true);
-      }
+      performProgressExport({ isAuto: false });
     });
   }
 
@@ -3298,6 +3413,8 @@ function wireAppEventListeners() {
         }
         state.reviewFilterCat = state.activeCategory;
         if (speedSelectEl) speedSelectEl.value = String(state.speed);
+        syncStageUnlockCalibrationUI();
+        syncDataManagementUI();
         syncPanamaSettingsUI();
         syncSpeechPreferencesUI();
         syncWeakDrillBannerUI();
@@ -3313,6 +3430,123 @@ function wireAppEventListeners() {
         setBackupStatus(`Imported (${res.totalAnswered} answers).`);
       } catch {
         setBackupStatus('Could not read JSON file.', true);
+      }
+    });
+  }
+
+  if (deleteProgressBtn) {
+    deleteProgressBtn.addEventListener('click', () => {
+      openDataConfirmModal({
+        title: 'Delete All Progress?',
+        message: 'This will permanently erase all recorded answers, streaks, mastery stats, calendar history, and stage progress. Export a backup first if you want to keep a copy.',
+        confirmLabel: 'Delete All Data',
+        onConfirm: () => {
+          resetAllProgressData();
+          state.activeCategory = CATEGORY_ORDER[0];
+          state.reviewFilterCat = state.activeCategory;
+          syncStageUnlockCalibrationUI();
+          syncDataManagementUI();
+          syncPanamaSettingsUI();
+          syncSpeechPreferencesUI();
+          syncWeakDrillBannerUI();
+          updateDailyGoalUI();
+          renderCategoryNav();
+          renderPlayCategoryState();
+          syncProgressionUI();
+          renderPathView();
+          renderStatsCalendar();
+          if (state.activeView === 'play') {
+            loadQuestion();
+          }
+          setBackupStatus('All progress data deleted.');
+        }
+      });
+    });
+  }
+
+  if (autoExportToggleBtn) {
+    autoExportToggleBtn.addEventListener('click', () => {
+      state.autoExportEnabled = state.autoExportEnabled === false;
+      syncDataManagementUI();
+      savePersistedData();
+      setBackupStatus(state.autoExportEnabled ? 'Auto-export enabled (every 10 Qs).' : 'Auto-export disabled.');
+    });
+  }
+
+  if (autoExportPathSaveBtn && autoExportPathInput) {
+    const saveCustomPath = () => {
+      const nextPath = autoExportPathInput.value.trim();
+      state.autoExportPath = nextPath;
+      syncDataManagementUI();
+      savePersistedData();
+      setBackupStatus(nextPath ? `Download path saved: ${nextPath}` : 'Using browser default Downloads.');
+    };
+    autoExportPathSaveBtn.addEventListener('click', saveCustomPath);
+    autoExportPathInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveCustomPath();
+      }
+    });
+  }
+
+  // Stage Unlock Requirements Recalibration (Settings -> Learning Preferences)
+  const stageVolSel = document.getElementById('stage-volume-mult-select');
+  const stageWinSel = document.getElementById('stage-window-mult-select');
+  const stageAccRange = document.getElementById('stage-min-acc-range');
+  const stageUnlockResetBtn = document.getElementById('stage-unlock-reset-btn');
+  const stageRecalibrateBtn = document.getElementById('stage-recalibrate-btn');
+
+  const applyStageUnlockCalibration = (patch, { clearOverrides = false } = {}) => {
+    const baseCfg = state.progressionConfig || createDefaultProgressionConfig();
+    const nextCfg = normalizeProgressionConfig({
+      ...baseCfg,
+      ...patch,
+      perTopicOverrides: clearOverrides ? {} : (patch.perTopicOverrides ?? baseCfg.perTopicOverrides)
+    });
+    state.progressionConfig = nextCfg;
+    savePersistedData();
+    syncStageUnlockCalibrationUI();
+    syncProgressionUI();
+    renderPathView();
+  };
+
+  if (stageVolSel) {
+    stageVolSel.addEventListener('change', () => {
+      applyStageUnlockCalibration({ volumeMultiplier: Number(stageVolSel.value) }, { clearOverrides: true });
+    });
+  }
+  if (stageWinSel) {
+    stageWinSel.addEventListener('change', () => {
+      applyStageUnlockCalibration({ windowMultiplier: Number(stageWinSel.value) }, { clearOverrides: true });
+    });
+  }
+  if (stageAccRange) {
+    stageAccRange.addEventListener('input', () => {
+      applyStageUnlockCalibration({ minAccuracy: Number(stageAccRange.value) }, { clearOverrides: true });
+    });
+  }
+  if (stageUnlockResetBtn) {
+    stageUnlockResetBtn.addEventListener('click', () => {
+      applyStageUnlockCalibration(createDefaultProgressionConfig(), { clearOverrides: true });
+    });
+  }
+  if (stageRecalibrateBtn) {
+    stageRecalibrateBtn.addEventListener('click', () => {
+      const res = recalibrateAllTopicsFromStats();
+      syncStageUnlockCalibrationUI();
+      renderPathView();
+      if (res.activeStageChanged && state.activeView === 'play') {
+        loadQuestion();
+      }
+      const previewEl = document.getElementById('stage-unlock-preview');
+      if (previewEl) {
+        const unlockBit = res.stagesUnlocked > 0
+          ? ` · ${res.stagesUnlocked} stage${res.stagesUnlocked === 1 ? '' : 's'} unlocked`
+          : '';
+        const activeOv = state.progressionConfig?.perTopicOverrides?.[state.activeCategory];
+        const tierBit = activeOv ? ` · Current topic: ${activeOv.tier} (${activeOv.volumeMultiplier}× / ${activeOv.minAccuracy}%)` : '';
+        previewEl.textContent = `Recalibrated ${res.topicsCalibrated} topics${unlockBit}${tierBit}`;
       }
     });
   }
@@ -3696,7 +3930,8 @@ function initApp() {
     onUpdateProgression: updateProgressionOnAnswer,
     onEvaluateAchievements: (outcomeMeta) => evaluateAllAchievements({ outcome: outcomeMeta, recordActivity: true }),
     onUpdateTopMetrics: updateTopMetrics,
-    onBuildStatsTable: buildStatsTable
+    onBuildStatsTable: buildStatsTable,
+    onQuestionRecorded: handleQuestionRecordedForAutoExport
   });
 
   initVoiceCapture({

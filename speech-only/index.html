@@ -12,7 +12,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20" />
+  <link rel="stylesheet" href="styles.css?v=29" />
 </head>
 
 <body class="is-speak-only">
@@ -25,8 +25,8 @@
         </div>
       </div>
 
-      <span id="hud-stage-title" class="hud-stage-title topbar-stage-title is-clickable" role="button"
-        tabindex="0" aria-expanded="false" title="Click to view Spanish &amp; English covered in this stage">A1.1 -
+      <span id="hud-stage-title" class="hud-stage-title topbar-stage-title is-clickable" role="button" tabindex="0"
+        aria-expanded="false" title="Click to view Spanish &amp; English covered in this stage">A1.1 -
         Greetings</span>
 
       <div class="topbar-actions">
@@ -80,10 +80,12 @@
           </button>
 
           <div id="settings-popover" class="settings-popover hidden" role="dialog" aria-label="Settings">
-            <details class="settings-accordion" open>
+            <details class="settings-accordion" name="settings-group" open>
               <summary class="settings-accordion-summary">
                 <span>Developer Tools</span>
-                <svg class="settings-accordion-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <svg class="settings-accordion-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
                   <polyline points="6 9 12 15 18 9" />
                 </svg>
               </summary>
@@ -121,137 +123,219 @@
                     <span id="speech-console-toggle-label" class="debug-switch-label">Off</span>
                   </button>
                 </div>
-
-                <div class="settings-divider"></div>
-
-                <div class="settings-field">
-                  <div class="settings-label-row">
-                    <span class="settings-row-label">Progress Backup</span>
-                  </div>
-                  <div class="settings-backup-actions">
-                    <button id="export-progress-btn" class="settings-test-btn" type="button"
-                      title="Download your progress and settings as a JSON backup file">Export JSON</button>
-                    <button id="import-progress-btn" class="settings-test-btn" type="button"
-                      title="Restore progress from a previously exported JSON backup">Import JSON</button>
-                    <input id="import-progress-file-input" type="file" accept="application/json,.json" class="hidden" />
-                  </div>
-                  <div id="progress-backup-status" class="mic-test-status"></div>
-                </div>
               </div>
             </details>
 
-            <details class="settings-accordion">
+            <details class="settings-accordion" name="settings-group">
               <summary class="settings-accordion-summary">
                 <span>Learning Preferences</span>
-                <svg class="settings-accordion-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <svg class="settings-accordion-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
                   <polyline points="6 9 12 15 18 9" />
                 </svg>
               </summary>
               <div class="settings-accordion-body">
 
-            <div class="settings-field">
-              <label for="speed-select">Auto-Advance Wait</label>
-              <select id="speed-select" class="custom-select">
-                <option value="0.5">0.5 seconds</option>
-                <option value="1" selected>1 second</option>
-                <option value="1.5">1.5 seconds</option>
-                <option value="2">2 seconds</option>
-                <option value="3">3 seconds</option>
-                <option value="4">4 seconds</option>
-                <option value="5">5 seconds</option>
-              </select>
-            </div>
+                <div class="settings-field">
+                  <label for="speed-select">Auto-Advance Wait</label>
+                  <select id="speed-select" class="custom-select">
+                    <option value="0.5">0.5 seconds</option>
+                    <option value="1" selected>1 second</option>
+                    <option value="1.5">1.5 seconds</option>
+                    <option value="2">2 seconds</option>
+                    <option value="3">3 seconds</option>
+                    <option value="4">4 seconds</option>
+                    <option value="5">5 seconds</option>
+                  </select>
+                </div>
 
-            <div class="settings-field">
-              <div class="settings-label-row">
-                <label for="volume-range">Voice Volume</label>
-                <span id="volume-value" class="settings-value-badge">100%</span>
-              </div>
-              <input id="volume-range" class="custom-range" type="range" min="0" max="1" step="0.05" value="1" />
-            </div>
+                <div class="settings-field">
+                  <div class="settings-label-row">
+                    <label for="volume-range">Voice Volume</label>
+                    <span id="volume-value" class="settings-value-badge">100%</span>
+                  </div>
+                  <input id="volume-range" class="custom-range" type="range" min="0" max="1" step="0.05" value="1" />
+                </div>
 
-            <div class="settings-field">
-              <div class="settings-label-row">
-                <label for="sfx-volume-range">Sound Effects Volume</label>
-                <span id="sfx-volume-value" class="settings-value-badge">70%</span>
-              </div>
-              <input id="sfx-volume-range" class="custom-range" type="range" min="0" max="1" step="0.05" value="0.7" />
-            </div>
+                <div class="settings-field">
+                  <div class="settings-label-row">
+                    <label for="sfx-volume-range">Sound Effects Volume</label>
+                    <span id="sfx-volume-value" class="settings-value-badge">70%</span>
+                  </div>
+                  <input id="sfx-volume-range" class="custom-range" type="range" min="0" max="1" step="0.05"
+                    value="0.7" />
+                </div>
 
-            <div class="settings-field">
-              <label for="correct-sound-select">Correct Answer Chime</label>
-              <div class="settings-select-row">
-                <select id="correct-sound-select" class="custom-select">
-                  <option value="1" selected>1. High Marimba</option>
-                  <option value="2">2. Soft Bell</option>
-                  <option value="3">3. Warm Triad</option>
-                  <option value="4">4. Crystal Drop</option>
-                  <option value="5">5. Harp Pluck</option>
-                  <option value="6">6. Bamboo Flute</option>
-                  <option value="7">7. Glass Marimba</option>
-                  <option value="8">8. Morning Dew</option>
-                  <option value="9">9. Velvet Chord</option>
-                  <option value="10">10. Celesta Spark</option>
-                  <option value="11">11. Zen Bowl</option>
-                </select>
-                <button id="test-correct-sound-btn" class="settings-test-btn" type="button"
-                  title="Preview Correct Sound">Play</button>
-              </div>
-            </div>
+                <div class="settings-field">
+                  <label for="correct-sound-select">Correct Answer Chime</label>
+                  <div class="settings-select-row">
+                    <select id="correct-sound-select" class="custom-select">
+                      <option value="1" selected>1. High Marimba</option>
+                      <option value="2">2. Soft Bell</option>
+                      <option value="3">3. Warm Triad</option>
+                      <option value="4">4. Crystal Drop</option>
+                      <option value="5">5. Harp Pluck</option>
+                      <option value="6">6. Bamboo Flute</option>
+                      <option value="7">7. Glass Marimba</option>
+                      <option value="8">8. Morning Dew</option>
+                      <option value="9">9. Velvet Chord</option>
+                      <option value="10">10. Celesta Spark</option>
+                      <option value="11">11. Zen Bowl</option>
+                    </select>
+                    <button id="test-correct-sound-btn" class="settings-test-btn" type="button"
+                      title="Preview Correct Sound">Play</button>
+                  </div>
+                </div>
 
-            <div class="settings-field">
-              <label for="incorrect-sound-select">Try-Again Sound</label>
-              <div class="settings-select-row">
-                <select id="incorrect-sound-select" class="custom-select">
-                  <option value="1" selected>1. Low Marimba</option>
-                  <option value="2">2. Soft Thud</option>
-                  <option value="3">3. Muted Woodblock</option>
-                  <option value="4">4. Gentle Low Drop</option>
-                  <option value="5">5. Dull Buzz</option>
-                  <option value="6">6. Double Tap</option>
-                  <option value="7">7. Warm Minor</option>
-                  <option value="8">8. Hollow Knock</option>
-                  <option value="9">9. Faded Buzzer</option>
-                  <option value="10">10. Soft Sigh</option>
-                </select>
-                <button id="test-incorrect-sound-btn" class="settings-test-btn" type="button"
-                  title="Preview Incorrect Sound">Play</button>
-              </div>
-            </div>
+                <div class="settings-field">
+                  <label for="incorrect-sound-select">Try-Again Sound</label>
+                  <div class="settings-select-row">
+                    <select id="incorrect-sound-select" class="custom-select">
+                      <option value="1" selected>1. Low Marimba</option>
+                      <option value="2">2. Soft Thud</option>
+                      <option value="3">3. Muted Woodblock</option>
+                      <option value="4">4. Gentle Low Drop</option>
+                      <option value="5">5. Dull Buzz</option>
+                      <option value="6">6. Double Tap</option>
+                      <option value="7">7. Warm Minor</option>
+                      <option value="8">8. Hollow Knock</option>
+                      <option value="9">9. Faded Buzzer</option>
+                      <option value="10">10. Soft Sigh</option>
+                    </select>
+                    <button id="test-incorrect-sound-btn" class="settings-test-btn" type="button"
+                      title="Preview Incorrect Sound">Play</button>
+                  </div>
+                </div>
 
-            <div class="settings-divider"></div>
+                <div class="settings-divider"></div>
 
-            <div class="settings-field">
-              <label for="mic-device-select">Microphone (es-PA)</label>
-              <select id="mic-device-select" class="custom-select">
-                <option value="">Default Microphone</option>
-              </select>
-              <div class="mic-test-actions">
-                <button id="test-tts-btn" class="settings-test-btn" type="button"
-                  title="Test Spanish voice playback volume">Test Voice</button>
-                <button id="test-mic-btn" class="settings-test-btn" type="button" title="Record microphone test">Record
-                  Mic</button>
-                <button id="test-mic-playback-btn" class="settings-test-btn" type="button" disabled
-                  title="Play back mic recording">Play Mic</button>
-              </div>
-              <div class="mic-meter-track" aria-hidden="true">
-                <div id="mic-test-meter-fill" class="mic-meter-fill"></div>
-              </div>
-              <div id="mic-test-status" class="mic-test-status"></div>
-            </div>
+                <div class="settings-field">
+                  <label for="mic-device-select">Microphone (es-PA)</label>
+                  <select id="mic-device-select" class="custom-select">
+                    <option value="">Default Microphone</option>
+                  </select>
+                  <div class="mic-test-actions">
+                    <button id="test-tts-btn" class="settings-test-btn" type="button"
+                      title="Test Spanish voice playback volume">Test Voice</button>
+                    <button id="test-mic-btn" class="settings-test-btn" type="button"
+                      title="Record microphone test">Record
+                      Mic</button>
+                    <button id="test-mic-playback-btn" class="settings-test-btn" type="button" disabled
+                      title="Play back mic recording">Play Mic</button>
+                  </div>
+                  <div class="mic-meter-track" aria-hidden="true">
+                    <div id="mic-test-meter-fill" class="mic-meter-fill"></div>
+                  </div>
+                  <div id="mic-test-status" class="mic-test-status"></div>
+                </div>
 
-            <div class="settings-field">
-              <label for="pronunciation-engine-select">Pronunciation Engine</label>
-              <div class="settings-select-row">
-                <select id="pronunciation-engine-select" class="custom-select">
-                  <option value="local" selected>Local Hybrid (Free · es-PA)</option>
-                  <option value="browser">Browser Speech-to-Text</option>
-                </select>
-                <button id="local-scorer-test-btn" class="settings-test-btn" type="button"
-                  title="Check if local scorer is running on 127.0.0.1:8765">Test Local</button>
+                <div class="settings-field">
+                  <label for="pronunciation-engine-select">Pronunciation Engine</label>
+                  <div class="settings-select-row">
+                    <select id="pronunciation-engine-select" class="custom-select">
+                      <option value="local" selected>Local Hybrid (Free · es-PA)</option>
+                      <option value="browser">Browser Speech-to-Text</option>
+                    </select>
+                    <button id="local-scorer-test-btn" class="settings-test-btn" type="button"
+                      title="Check if local scorer is running on 127.0.0.1:8765">Test Local</button>
+                  </div>
+                  <div id="local-scorer-status" class="mic-test-status"></div>
+                </div>
+
+                <div class="settings-divider"></div>
+
+                <div class="settings-field">
+                  <div class="settings-label-row">
+                    <label for="stage-volume-mult-select">Stage Unlock · Volume</label>
+                    <button id="stage-unlock-reset-btn" class="settings-reset-link" type="button"
+                      title="Reset stage unlock requirements to balanced defaults">Reset</button>
+                  </div>
+                  <select id="stage-volume-mult-select" class="custom-select">
+                    <option value="1">1× stage items (Quick)</option>
+                    <option value="1.5">1.5× stage items (Light)</option>
+                    <option value="2" selected>2× stage items (Balanced)</option>
+                    <option value="2.5">2.5× stage items (Thorough)</option>
+                    <option value="3">3× stage items (Intensive)</option>
+                  </select>
+                </div>
+
+                <div class="settings-field">
+                  <label for="stage-window-mult-select">Stage Unlock · Rolling Window</label>
+                  <select id="stage-window-mult-select" class="custom-select">
+                    <option value="1">1× stage items (Fast recovery)</option>
+                    <option value="1.5" selected>1.5× stage items (Balanced)</option>
+                    <option value="2">2× stage items (Strict)</option>
+                  </select>
+                </div>
+
+                <div class="settings-field">
+                  <div class="settings-label-row">
+                    <label for="stage-min-acc-range">Stage Unlock · Rolling Accuracy</label>
+                    <span id="stage-min-acc-value" class="settings-value-badge">85%</span>
+                  </div>
+                  <input id="stage-min-acc-range" class="custom-range" type="range" min="65" max="95" step="5"
+                    value="85" />
+                  <div class="settings-backup-actions" style="margin-top: 0.35rem;">
+                    <button id="stage-recalibrate-btn" class="settings-test-btn" type="button"
+                      title="Automatically calibrate unlock requirements for each topic based on your recorded accuracy, skips, and progress">Recalibrate
+                      Topics from Stats</button>
+                  </div>
+                  <div id="stage-unlock-preview" class="mic-test-status"></div>
+                </div>
               </div>
-              <div id="local-scorer-status" class="mic-test-status"></div>
-            </div>
+            </details>
+
+            <details class="settings-accordion" name="settings-group">
+              <summary class="settings-accordion-summary">
+                <span>Data Management</span>
+                <svg class="settings-accordion-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </summary>
+              <div class="settings-accordion-body">
+                <div class="settings-field">
+                  <span class="settings-row-label">Backup &amp; Restore</span>
+                  <div class="settings-backup-actions">
+                    <button id="export-progress-btn" class="settings-test-btn" type="button"
+                      title="Export your progress and settings as a JSON backup file">Export</button>
+                    <button id="import-progress-btn" class="settings-test-btn" type="button"
+                      title="Import progress from a previously exported JSON backup">Import</button>
+                    <button id="delete-progress-btn" class="settings-test-btn settings-danger-btn" type="button"
+                      title="Permanently delete all saved progress and stats">Delete</button>
+                    <input id="import-progress-file-input" type="file" accept="application/json,.json" class="hidden" />
+                  </div>
+                </div>
+
+                <div class="settings-divider"></div>
+
+                <div class="settings-row settings-row--debug">
+                  <div class="settings-debug-info">
+                    <span class="settings-row-label">Auto-Export</span>
+                    <span class="settings-debug-sub">Auto-save backup every 10 questions</span>
+                  </div>
+                  <button id="auto-export-toggle-btn" class="debug-switch-btn is-on" type="button" role="switch"
+                    aria-checked="true" aria-label="Toggle Auto-Export every 10 questions"
+                    title="Automatically export a JSON backup every 10 answered questions">
+                    <span class="debug-switch-track" aria-hidden="true">
+                      <span class="debug-switch-thumb"></span>
+                    </span>
+                    <span id="auto-export-toggle-label" class="debug-switch-label">On</span>
+                  </button>
+                </div>
+
+                <div class="settings-field">
+                  <label for="auto-export-path-input">Download Folder Path</label>
+                  <div class="settings-select-row">
+                    <input id="auto-export-path-input" class="custom-select settings-path-input" type="text"
+                      placeholder="Browser Downloads (default)"
+                      title="Enter a local folder path on your PC (e.g. E:\Spanish\Backups) or leave blank for browser Downloads" />
+                    <button id="auto-export-path-save-btn" class="settings-test-btn" type="button"
+                      title="Save custom download folder path">Save</button>
+                  </div>
+                </div>
               </div>
             </details>
           </div>
@@ -300,7 +384,6 @@
             <div class="hud-bar-track">
               <div id="hud-progression-fill" class="hud-bar-fill" style="width: 0%"></div>
             </div>
-            <div id="hud-unlock-req-line" class="hud-unlock-req-line" role="status" aria-live="polite"></div>
           </div>
 
           <!-- Active Lesson Content -->
@@ -310,25 +393,38 @@
               <!-- Question Prompt Display -->
               <div class="prompt-zone">
                 <div id="prompt-stat-pin" class="prompt-stat-pin hidden" aria-live="polite"></div>
-                <button id="hands-free-mode-btn" class="hands-free-autopilot-btn"
-                  type="button" aria-pressed="false" aria-label="Toggle Hands-Free Autopilot"
-                  title="Continuous hands-free speaking loop with adaptive auto-listen &amp; voice commands (Alt+H)">
-                  <svg class="hands-free-wheel-svg" width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <circle cx="12" cy="12" r="9.5" />
-                    <circle cx="12" cy="12" r="2.2" />
-                    <path d="M3 10.5h6.9" />
-                    <path d="M14.1 10.5H21" />
-                    <path d="M12 14.2V21.5" />
-                  </svg>
-                  <span class="hands-free-live-dot" aria-hidden="true"></span>
-                  <span id="hands-free-mode-label" class="hands-free-autopilot-label">Hands-Free</span>
-                </button>
+                <div class="hands-free-corner-stack">
+                  <button id="hands-free-mode-btn" class="hands-free-autopilot-btn" type="button" aria-pressed="false"
+                    aria-label="Toggle Hands-Free Autopilot"
+                    title="Continuous hands-free speaking loop with adaptive auto-listen &amp; voice commands (Alt+H)">
+                    <svg class="hands-free-wheel-svg" width="38" height="38" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                      aria-hidden="true">
+                      <circle cx="12" cy="12" r="9.5" />
+                      <circle cx="12" cy="12" r="2.2" />
+                      <path d="M3 10.5h6.9" />
+                      <path d="M14.1 10.5H21" />
+                      <path d="M12 14.2V21.5" />
+                    </svg>
+                    <span class="hands-free-live-dot" aria-hidden="true"></span>
+                    <span id="hands-free-mode-label" class="hands-free-autopilot-label">Hands-Free</span>
+                  </button>
+                  <div id="hands-free-commands-drawer" class="hands-free-commands-drawer" aria-hidden="true">
+                    <div class="hands-free-commands-inner">
+                      <span class="hands-free-cmd-item">"skip"</span>
+                      <span class="hands-free-cmd-item">"repeat"</span>
+                      <span class="hands-free-cmd-item">"slower"</span>
+                      <span class="hands-free-cmd-item">"pause"</span>
+                    </div>
+                  </div>
+                </div>
                 <div class="prompt-hero">
                   <div id="prompt-value" class="prompt-value">hola</div>
-                  <div id="full-answer-reward-banner" class="full-answer-reward-banner hidden" role="status" aria-live="polite"></div>
+                  <div id="full-answer-reward-banner" class="full-answer-reward-banner hidden" role="status"
+                    aria-live="polite"></div>
                   <div id="prompt-subtext" class="prompt-subtext hidden"></div>
-                  <div id="structure-pattern-cue" class="structure-pattern-cue hidden" role="note" aria-live="polite"></div>
+                  <div id="structure-pattern-cue" class="structure-pattern-cue hidden" role="note" aria-live="polite">
+                  </div>
                   <div id="slot-example-cue" class="slot-example-cue hidden" role="note" aria-live="polite"></div>
                   <div id="slot-options-bar" class="slot-options-bar hidden">
                     <label id="slot-options-label" class="slot-options-label" for="slot-options-select">15 common
@@ -387,21 +483,6 @@
 
               <!-- Answer Input & Pronunciation Studio -->
               <div class="interaction-zone">
-                <div id="hands-free-status-bar" class="hands-free-status-bar hidden" role="status" aria-live="polite">
-                  <div class="hands-free-status-left">
-                    <span id="hands-free-phase-pill" class="hands-free-phase-pill">Listening…</span>
-                    <span id="hands-free-cmd-hint" class="hands-free-cmd-hint">Say: "repeat" · "skip" · "slower" ·
-                      "pause"</span>
-                  </div>
-                  <div class="hands-free-bar-actions">
-                    <button id="hands-free-volume-fix-btn" class="settings-test-btn hidden" type="button"
-                      title="Set Voice Volume to 80% for Eyes-Free prompts">Unmute 80%</button>
-                    <button id="hands-free-pause-btn" class="settings-test-btn" type="button"
-                      title="Pause or resume Hands-Free Mode (Space)">Pause</button>
-                    <button id="hands-free-exit-btn" class="settings-test-btn" type="button"
-                      title="Exit Hands-Free Mode">Exit</button>
-                  </div>
-                </div>
                 <div id="type-section" class="type-section">
                   <div class="input-shell is-speak-mode">
                     <input id="answer-input" class="answer-input hidden" type="text" autocomplete="off"
@@ -462,15 +543,9 @@
                   <div id="post-speak-word-strip" class="post-speak-word-strip hidden" role="region"
                     aria-label="Click any Spanish word to hear it"></div>
                   <div id="audio-quality-warning" class="audio-quality-warning hidden" role="status"></div>
-                  <div id="panama-phonetics-tip" class="panama-phonetics-tip hidden" role="status"></div>
-                </div>
-
-                <!-- Auto-Advance Progress Bar & Pause Control -->
-                <div class="stage-footer">
-                  <div class="feedback-bar-row">
+                  <div id="feedback-bar-row" class="feedback-bar-row feedback-bar-row--inline hidden">
                     <div id="feedback-drawer" class="feedback-drawer" aria-hidden="true">
                       <div id="feedback-bar" class="feedback-bar"></div>
-                      <span class="feedback-drawer-label">Progress bar</span>
                     </div>
                     <button id="pause-progress-btn" class="pause-progress-btn hidden" type="button">
                       Pause
@@ -645,16 +720,14 @@
               </div>
             </div>
             <div id="stats-pronunciation-summary" class="stats-pronunciation-summary hidden" aria-live="polite"></div>
-            <div id="stats-table-scope-seg" class="stats-table-scope-seg" role="group"
-              aria-label="Filter Stats Tables">
+            <div id="stats-table-scope-seg" class="stats-table-scope-seg" role="group" aria-label="Filter Stats Tables">
               <button id="stats-scope-both" class="stats-scope-btn active" type="button" aria-pressed="true">Both
                 Tables</button>
               <button id="stats-scope-base" class="stats-scope-btn" type="button" aria-pressed="false">Base
                 Questions</button>
               <button id="stats-scope-extensions" class="stats-scope-btn" type="button"
                 aria-pressed="false">Extensions</button>
-              <button id="stats-scope-banned" class="stats-scope-btn" type="button"
-                aria-pressed="false">Banned</button>
+              <button id="stats-scope-banned" class="stats-scope-btn" type="button" aria-pressed="false">Banned</button>
             </div>
           </div>
 
@@ -886,7 +959,8 @@
       </div>
       <div id="topic-exam-failed-stats" class="stage-award-stats-grid"></div>
       <div class="modal-actions">
-        <button id="topic-exam-retake-btn" class="modal-btn modal-btn-primary" type="button">Retake Exam (0/30) →</button>
+        <button id="topic-exam-retake-btn" class="modal-btn modal-btn-primary" type="button">Retake Exam (0/30)
+          →</button>
       </div>
     </div>
   </div>
@@ -1054,7 +1128,20 @@
     </div>
   </section>
 
-  <script type="module" src="app.js?v=23"></script>
+  <!-- Data Management Confirmation Modal -->
+  <div id="data-confirm-modal-backdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true"
+    aria-labelledby="data-confirm-modal-title">
+    <div class="modal-card">
+      <h2 id="data-confirm-modal-title" class="modal-title">Confirm Action</h2>
+      <p id="data-confirm-modal-desc" class="modal-desc">Are you sure you want to proceed?</p>
+      <div class="modal-actions">
+        <button id="data-confirm-cancel-btn" class="modal-btn" type="button">Cancel</button>
+        <button id="data-confirm-ok-btn" class="modal-btn modal-btn-danger" type="button">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js?v=33"></script>
 </body>
 
 </html>

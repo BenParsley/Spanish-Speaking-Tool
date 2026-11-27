@@ -54,6 +54,41 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
+    def do_POST(self):
+        if self.path.split("?", 1)[0] == "/__export_backup":
+            try:
+                content_len = int(self.headers.get("Content-Length", "0"))
+                raw_body = self.rfile.read(content_len) if content_len > 0 else b"{}"
+                req = json.loads(raw_body.decode("utf-8"))
+                target_dir = str(req.get("directory") or "").strip()
+                raw_name = str(req.get("filename") or "panamanian-spanish-progress.json").strip()
+                safe_name = os.path.basename(raw_name) or "panamanian-spanish-progress.json"
+                if not safe_name.lower().endswith(".json"):
+                    safe_name += ".json"
+                data = req.get("data")
+                if not target_dir:
+                    raise ValueError("No download folder path provided.")
+                expanded_dir = os.path.abspath(os.path.expandvars(os.path.expanduser(target_dir)))
+                os.makedirs(expanded_dir, exist_ok=True)
+                out_path = os.path.join(expanded_dir, safe_name)
+                with open(out_path, "w", encoding="utf-8") as fh:
+                    json.dump(data, fh, indent=2, ensure_ascii=False)
+                resp = json.dumps({"ok": True, "savedPath": out_path}).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(resp)))
+                self.end_headers()
+                self.wfile.write(resp)
+            except Exception as exc:
+                resp = json.dumps({"ok": False, "error": str(exc)}).encode("utf-8")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(resp)))
+                self.end_headers()
+                self.wfile.write(resp)
+            return
+        self.send_error(404, "Not Found")
+
     def log_message(self, format, *args):
         # Keep terminal output readable by hiding routine live-reload polls
         if args and isinstance(args[0], str) and "/__reload" in args[0]:

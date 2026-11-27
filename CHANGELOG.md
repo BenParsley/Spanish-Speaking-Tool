@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-11-27
+
+### New
+- Added a dedicated **Data Management** accordion in Settings with **Export**, **Import**, and **Delete** progress controls, plus a confirmation modal before deleting or randomizing data.
+- Added background **Auto-Export** every 10 answered questions with an On/Off toggle switch and customizable PC backup folder path (backed by `POST /__export_backup` in `serve.py`).
+- Added a subtle gray slide-out voice command list (`"skip"`, `"repeat"`, `"slower"`, `"pause"`) directly beneath the Hands-Free steering wheel button when Hands-Free mode is toggled on.
+
+### Updated
+- Enforced exclusive Settings accordions so opening one section automatically closes any other open section.
+- Merged the feedback countdown progress bar (`#feedback-bar-row`) into the bottom of the recording/feedback area and hid it during recording so it only appears during the post-answer countdown.
+- Removed the unlock requirement line (`#hud-unlock-req-line`) and stripped `#stage-progression-hud` down to a minimal hairline progress bar so the prompt zone absorbs the extra vertical space.
+- Removed the yellow accent border and highlight effects for full-answer bonuses while keeping the bonus chime and standard correct/incorrect answer preview.
+- Removed the `#hands-free-status-bar` from the interaction zone.
+- Completely removed the Panamanian phonetics tip (`#panama-phonetics-tip`) banner and its CSS/JS bindings while keeping audio playback on phoneme chip click.
+
+### Fixed
+- Fixed vertical scrolling inside the Settings popover by preventing accordion containers from shrinking/clipping.
+- Fixed `ReferenceError: getLocalDateKey is not defined` during progress export and fixed the Auto-Export toggle slider thumb alignment.
+
+## 2026-11-26
+
+> [!IMPORTANT]
+> **Major Progression Overhaul — Dynamic Rolling Window Stage Unlocks (#3)**
+> Replaced punitive lifetime cumulative accuracy on regular stages with a dynamic stage-item **Rolling Window** progression system (`N × 2` min volume, `round(N × 1.5)` rolling window, `85%` default; Final Exams remain `30` questions · `90%`) so early learning mistakes no longer trap learners in unrecoverable accuracy holes.
+
+### Important (#3)
+- Added **Stage Unlock Requirements** recalibration controls inside **Settings → Learning Preferences** (Volume per stage item, Rolling Window size, Rolling Accuracy slider, live stage preview, and Reset) (#3).
+- Added a **Recalibrate Topics from Stats** button in Settings that analyzes recorded accuracy, skips, and bans per topic to assign tailored unlock tiers (`accelerated`, `balanced`, `supportive`) and automatically unlock any stages already meeting the recalibrated targets (#3).
+
 ## 2026-11-25
 
 ### New

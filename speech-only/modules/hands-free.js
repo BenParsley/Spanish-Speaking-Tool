@@ -6,15 +6,10 @@ import {
   stopAllSpeech
 } from './audio.js';
 import {
-  handsFreeCmdHintEl,
-  handsFreeExitBtn,
+  handsFreeCommandsDrawerEl,
   handsFreeInlineIntroEl,
   handsFreeModeBtn,
   handsFreeModeLabelEl,
-  handsFreePauseBtn,
-  handsFreePhasePillEl,
-  handsFreeStatusBarEl,
-  handsFreeVolumeFixBtn,
   typeAnswerFeedbackEl
 } from './dom.js';
 import { logSpeechEvent } from './speech-console.js';
@@ -250,34 +245,9 @@ export function syncHandsFreeUI() {
         : 'Hands-Free On';
   }
 
-  if (handsFreeStatusBarEl) {
-    handsFreeStatusBarEl.classList.toggle('hidden', !active);
-    handsFreeStatusBarEl.classList.toggle('is-paused', paused);
-  }
-  if (handsFreePhasePillEl) {
-    const info = getPhaseDisplayInfo(handsFreeState.phase);
-    handsFreePhasePillEl.textContent = info.label;
-    handsFreePhasePillEl.className = `hands-free-phase-pill${info.cls ? ` ${info.cls}` : ''}`;
-  }
-  if (handsFreeCmdHintEl) {
-    if (handsFreeState.statusNote) {
-      handsFreeCmdHintEl.textContent = handsFreeState.statusNote;
-    } else if (paused) {
-      handsFreeCmdHintEl.textContent = 'Click Resume or press Space to continue Hands-Free.';
-    } else if (handsFreeState.phase === 'review') {
-      handsFreeCmdHintEl.textContent = 'Say: "retry" · "next" · "slower" · "pause"';
-    } else if (state.practiceMode) {
-      handsFreeCmdHintEl.textContent = 'Say Spanish aloud · Commands: "repeat" · "slower" · "next" · "pause"';
-    } else {
-      handsFreeCmdHintEl.textContent = 'Say: "repeat" · "skip" · "slower" · "cancel" · "pause"';
-    }
-  }
-  if (handsFreeVolumeFixBtn) {
-    const needsUnmute = Boolean(active && Number(state.volume) <= 0);
-    handsFreeVolumeFixBtn.classList.toggle('hidden', !needsUnmute);
-  }
-  if (handsFreePauseBtn) {
-    handsFreePauseBtn.textContent = paused ? 'Resume' : 'Pause';
+  if (handsFreeCommandsDrawerEl) {
+    handsFreeCommandsDrawerEl.classList.toggle('is-open', active);
+    handsFreeCommandsDrawerEl.setAttribute('aria-hidden', String(!active));
   }
 }
 
@@ -891,28 +861,6 @@ export function initHandsFree(hooks = {}) {
   if (handsFreeModeBtn) {
     handsFreeModeBtn.addEventListener('click', () => {
       toggleHandsFreeMode();
-    });
-  }
-  if (handsFreePauseBtn) {
-    handsFreePauseBtn.addEventListener('click', () => {
-      if (handsFreeState.phase === 'paused') {
-        resumeHandsFreeSession();
-      } else {
-        pauseHandsFreeSession('user');
-      }
-    });
-  }
-  if (handsFreeExitBtn) {
-    handsFreeExitBtn.addEventListener('click', () => {
-      stopHandsFreeSession();
-    });
-  }
-  if (handsFreeVolumeFixBtn) {
-    handsFreeVolumeFixBtn.addEventListener('click', () => {
-      state.volume = 0.8;
-      savePersistedData();
-      hfHooks.onUpdateVolumeUI();
-      syncHandsFreeUI();
     });
   }
 

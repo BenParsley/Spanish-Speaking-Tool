@@ -12,10 +12,57 @@ export const SKILL_META = {
 export const PRESET_STAGE_THRESHOLD = 120;
 export const PRESET_SKILL_MAX_ATTEMPTS = 45;
 export const PRESET_STAGE_MIN_ACCURACY = 85;
+export const PRESET_VOLUME_MULTIPLIER = 2;
+export const PRESET_WINDOW_MULTIPLIER = 1.5;
 export const STAGE_ITEM_MIN_CORRECT = 8;
-export const STAGE_PHRASE_MULTIPLIER = 3;
+export const STAGE_PHRASE_MULTIPLIER = 2;
 export const TOPIC_EXAM_QUESTION_COUNT = 30;
 export const TOPIC_EXAM_MIN_ACCURACY = 90;
+
+export function getNumbersStageEffectiveItemCount(stageIndex) {
+  // Stage 1 (0-100) & Stage 5 (Mixed A1 Contexts) are broader (15); Stages 2-4 are focused contexts (12)
+  return stageIndex === 0 || stageIndex === 4 ? 15 : 12;
+}
+
+export function normalizeProgressionConfig(rawCfg) {
+  const def = createDefaultProgressionConfig();
+  if (!rawCfg || typeof rawCfg !== 'object') return def;
+  const volRaw = Number(rawCfg.volumeMultiplier);
+  const winRaw = Number(rawCfg.windowMultiplier);
+  const accRaw = Number(rawCfg.minAccuracy);
+  const volumeMultiplier = Number.isFinite(volRaw)
+    ? Math.min(4, Math.max(1, Math.round(volRaw * 2) / 2))
+    : def.volumeMultiplier;
+  const windowMultiplier = Number.isFinite(winRaw)
+    ? Math.min(3, Math.max(1, Math.round(winRaw * 2) / 2))
+    : def.windowMultiplier;
+  const minAccuracy = Number.isFinite(accRaw)
+    ? Math.min(95, Math.max(60, Math.round(accRaw / 5) * 5))
+    : def.minAccuracy;
+  const perTopicOverrides = {};
+  if (rawCfg.perTopicOverrides && typeof rawCfg.perTopicOverrides === 'object' && !Array.isArray(rawCfg.perTopicOverrides)) {
+    Object.entries(rawCfg.perTopicOverrides).forEach(([catId, ov]) => {
+      if (!CATEGORIES[catId] || !ov || typeof ov !== 'object') return;
+      const oVol = Number(ov.volumeMultiplier);
+      const oWin = Number(ov.windowMultiplier);
+      const oAcc = Number(ov.minAccuracy);
+      perTopicOverrides[catId] = {
+        volumeMultiplier: Number.isFinite(oVol) ? Math.min(4, Math.max(1, Math.round(oVol * 2) / 2)) : volumeMultiplier,
+        windowMultiplier: Number.isFinite(oWin) ? Math.min(3, Math.max(1, Math.round(oWin * 4) / 4)) : windowMultiplier,
+        minAccuracy: Number.isFinite(oAcc) ? Math.min(95, Math.max(60, Math.round(oAcc / 5) * 5)) : minAccuracy,
+        tier: typeof ov.tier === 'string' ? ov.tier : 'balanced'
+      };
+    });
+  }
+  return {
+    enabled: true,
+    threshold: def.threshold,
+    minAccuracy,
+    volumeMultiplier,
+    windowMultiplier,
+    perTopicOverrides
+  };
+}
 
 export function getActiveSkillPillarsForMode() {
   return ['speak'];
@@ -77,7 +124,10 @@ export function createDefaultProgressionConfig() {
   return {
     enabled: true,
     threshold: PRESET_STAGE_THRESHOLD,
-    minAccuracy: PRESET_STAGE_MIN_ACCURACY
+    minAccuracy: PRESET_STAGE_MIN_ACCURACY,
+    volumeMultiplier: PRESET_VOLUME_MULTIPLIER,
+    windowMultiplier: PRESET_WINDOW_MULTIPLIER,
+    perTopicOverrides: {}
   };
 }
 
@@ -147,7 +197,7 @@ export function getHighestUnlockedCategoryIdInMap(categoryProgressMap) {
 
 export function normalizeProgressionBundle(parsed, isSpeakOnly = true) {
   const defaultProgress = createDefaultCategoryProgress();
-  const progressionConfig = createDefaultProgressionConfig();
+  const progressionConfig = normalizeProgressionConfig(parsed?.progressionConfig);
   const activePillars = getActiveSkillPillarsForMode(isSpeakOnly);
 
   const categoryProgress = defaultProgress;

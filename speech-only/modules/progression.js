@@ -26,6 +26,8 @@ import {
 import {
   PRESET_SKILL_MAX_ATTEMPTS,
   PRESET_STAGE_THRESHOLD,
+  PRESET_VOLUME_MULTIPLIER,
+  PRESET_WINDOW_MULTIPLIER,
   SKILL_META,
   SKILL_PILLARS,
   STAGE_ITEM_MIN_CORRECT,
@@ -34,7 +36,9 @@ import {
   TOPIC_EXAM_QUESTION_COUNT,
   createDefaultProgressionConfig,
   createEmptySkillsMap,
+  getNumbersStageEffectiveItemCount,
   getStageSkillTargets,
+  normalizeProgressionConfig,
   normalizeSkillsMap
 } from './progression-core.js';
 import {
@@ -255,10 +259,18 @@ export function getProgressionSnapshot(catId = state.activeCategory) {
   const nextStage = !isFinalStage ? stages[stageIndex + 1] : null;
   const nextSubject = getNextCategoryInOrder(category.id);
   const stageWordCount =
-    category.id === 'numbers' ? 0 : getItemsForStage(category.id, stageIndex).length;
+    category.id === 'numbers'
+      ? getNumbersStageEffectiveItemCount(stageIndex)
+      : getItemsForStage(category.id, stageIndex).length;
   const isExamStage = Boolean(stage?.isExam);
-  const minAccuracy = isExamStage ? TOPIC_EXAM_MIN_ACCURACY : config.minAccuracy;
-  const baseTargets = getStageSkillTargets(config.threshold);
+  const safeCfg = normalizeProgressionConfig(config);
+  const topicOverride = safeCfg.perTopicOverrides?.[category.id] || null;
+  const minAccuracy = isExamStage
+    ? TOPIC_EXAM_MIN_ACCURACY
+    : (topicOverride?.minAccuracy ?? safeCfg.minAccuracy);
+  const volumeMult = topicOverride?.volumeMultiplier ?? safeCfg.volumeMultiplier ?? PRESET_VOLUME_MULTIPLIER;
+  const windowMult = topicOverride?.windowMultiplier ?? safeCfg.windowMultiplier ?? PRESET_WINDOW_MULTIPLIER;
+  const baseTargets = getStageSkillTargets(safeCfg.threshold);
   const isSpeakOnly = Boolean(state.speakOnlyMode);
   const activePillars = getActiveSkillPillars(isSpeakOnly);
 
@@ -271,15 +283,19 @@ export function getProgressionSnapshot(catId = state.activeCategory) {
     const target = isExamStage
       ? TOPIC_EXAM_QUESTION_COUNT
       : stageWordCount > 0
-        ? Math.max(24, stageWordCount * STAGE_PHRASE_MULTIPLIER)
+        ? Math.max(8, Math.round(stageWordCount * volumeMult))
         : baseTargets[key];
-    const maxAttempts = isExamStage
+    const rollingWindowSize = isExamStage
       ? TOPIC_EXAM_QUESTION_COUNT
       : stageWordCount > 0
-        ? Math.max(40, target + 15)
-        : PRESET_SKILL_MAX_ATTEMPTS;
-    const useRolling = !isExamStage && rawRecent.length > 0 && rawRecent.length >= Math.min(total, target);
-    const rollingWin = useRolling ? rawRecent.slice(-target) : [];
+        ? Math.max(8, Math.round(stageWordCount * windowMult))
+        : Math.max(12, Math.round(baseTargets[key] * 0.75));
+    const maxAttempts = isExamStage
+      ? TOPIC_EXAM_QUESTION_COUNT
+      : Math.max(30, target + 15);
+    // Always evaluate regular stage accuracy on the recent rolling window whenever recent outcomes exist
+    const useRolling = !isExamStage && rawRecent.length > 0;
+    const rollingWin = useRolling ? rawRecent.slice(-rollingWindowSize) : [];
     const rollingCorrect = useRolling ? rollingWin.filter(Boolean).length : correct;
     const rollingTotal = useRolling ? rollingWin.length : total;
     const acc = rollingTotal > 0 ? (rollingCorrect / rollingTotal) * 100 : 0;
@@ -296,10 +312,10 @@ export function getProgressionSnapshot(catId = state.activeCategory) {
     if (!isExamStage && rollingTotal > 0 && acc < minAccuracy) {
       if (useRolling) {
         const sim = rollingWin.slice();
-        while (consecutiveNeededForAcc < target) {
+        while (consecutiveNeededForAcc < rollingWindowSize) {
           consecutiveNeededForAcc += 1;
           sim.push(true);
-          if (sim.length > target) sim.shift();
+          if (sim.length > rollingWindowSize) sim.shift();
           const sc = sim.filter(Boolean).length;
           if ((sc / sim.length) * 100 >= minAccuracy) break;
         }
@@ -332,7 +348,8 @@ export function getProgressionSnapshot(catId = state.activeCategory) {
       acc,
       accRounded,
       useRolling,
-      rollingWindowSize: target,
+      rollingWindowSize,
+      stageItemCount: stageWordCount,
       accuracyMet,
       proficient,
       correctRemaining,
@@ -589,13 +606,6 @@ export function syncProgressionUI() {
     hudStageTitleEl.removeAttribute('aria-expanded');
     if (hudProgressionFillEl) {
       hudProgressionFillEl.style.width = `${activeSnap.correctPct}%`;
-    }
-    const unlockReqEl = document.getElementById('hud-unlock-req-line');
-    if (unlockReqEl) {
-      unlockReqEl.textContent = activeSnap.hudReqText || '';
-      unlockReqEl.classList.toggle('is-warn', activeSnap.tone === 'warn');
-      unlockReqEl.classList.toggle('is-done', activeSnap.tone === 'done');
-      unlockReqEl.classList.toggle('hidden', !activeSnap.hudReqText);
     }
   }
 
@@ -1426,6 +1436,157 @@ export function undoSkipStageInProgression(catId, stageIndex) {
     progressionHooks.onSyncDirectionUI();
   }
   return { catId, stageIndex: idx };
+}
+
+export function recalibrateAllTopicsFromStats() {
+  const cfg = normalizeProgressionConfig(state.progressionConfig);
+  const overrides = {};
+  const details = [];
+  let stagesUnlocked = 0;
+  let activeStageChanged = false;
+
+  CATEGORY_ORDER.forEach((catId) => {
+    const cat = CATEGORIES[catId];
+    if (!cat || !Array.isArray(cat.stages)) return;
+
+    // Aggregate real user stats for this topic
+    let topicCorrect = 0;
+    let topicIncorrect = 0;
+    let topicSkipped = 0;
+    let topicBans = 0;
+
+    if (catId === 'numbers') {
+      Object.values(state.counts || {}).forEach((entry) => {
+        if (!entry || typeof entry !== 'object') return;
+        topicCorrect += Math.max(0, Number(entry.correct) || 0);
+        topicIncorrect += Math.max(0, Number(entry.incorrect) || 0);
+        topicSkipped += Math.max(0, Number(entry.skipped) || 0);
+        topicBans += Math.max(0, Number(entry.banCount) || 0);
+      });
+    } else {
+      getItemsForCategory(catId).forEach((item) => {
+        const entry = state.phraseCounts?.[item.id];
+        if (!entry || typeof entry !== 'object') return;
+        topicCorrect += Math.max(0, Number(entry.correct) || 0);
+        topicIncorrect += Math.max(0, Number(entry.incorrect) || 0);
+        topicSkipped += Math.max(0, Number(entry.skipped) || 0);
+        topicBans += Math.max(0, Number(entry.banCount) || 0);
+      });
+    }
+
+    const topicTotal = topicCorrect + topicIncorrect;
+    const topicAcc = topicTotal > 0 ? Math.round((topicCorrect / topicTotal) * 100) : null;
+
+    // Choose supportive per-topic calibration tier based on user's actual performance
+    let volumeMultiplier = PRESET_VOLUME_MULTIPLIER;
+    let windowMultiplier = PRESET_WINDOW_MULTIPLIER;
+    let minAccuracy = cfg.minAccuracy || 85;
+    let tier = 'balanced';
+
+    if (topicTotal >= 20 && topicAcc >= 90 && topicBans === 0) {
+      // Strong mastery -> brisker pace
+      volumeMultiplier = 1.5;
+      windowMultiplier = 1.25;
+      minAccuracy = 85;
+      tier = 'accelerated';
+    } else if (topicTotal >= 10 && (topicAcc < 75 || topicBans >= 2 || topicSkipped >= 6)) {
+      // Struggling / high skips -> extra reinforcement with a supportive, forgiving rolling threshold
+      volumeMultiplier = 2.5;
+      windowMultiplier = 1.5;
+      minAccuracy = 80;
+      tier = 'supportive';
+    } else {
+      volumeMultiplier = PRESET_VOLUME_MULTIPLIER;
+      windowMultiplier = PRESET_WINDOW_MULTIPLIER;
+      minAccuracy = 85;
+      tier = 'balanced';
+    }
+
+    overrides[catId] = { volumeMultiplier, windowMultiplier, minAccuracy, tier };
+    details.push({
+      catId,
+      code: cat.a1Code || cat.label,
+      topicTotal,
+      topicAcc,
+      tier,
+      volumeMultiplier,
+      windowMultiplier,
+      minAccuracy
+    });
+  });
+
+  state.progressionConfig = normalizeProgressionConfig({
+    ...cfg,
+    perTopicOverrides: overrides
+  });
+
+  // Re-evaluate active stages under the newly calibrated Rolling Window targets
+  CATEGORY_ORDER.forEach((catId) => {
+    const cat = CATEGORIES[catId];
+    if (!cat || !Array.isArray(cat.stages)) return;
+    const prog = getCategoryProgress(catId);
+    const activeIdx = Math.min(cat.stages.length - 1, Math.max(0, Number(prog.stageIndex) || 0));
+    const stage = cat.stages[activeIdx];
+    if (!stage || stage.isExam) return;
+
+    // Seed a representative rolling window for legacy stages that have attempts but empty recentOutcomes
+    const speak = prog.skills?.speak || { correct: 0, total: 0 };
+    if ((!Array.isArray(prog.recentOutcomes) || prog.recentOutcomes.length === 0) && speak.total > 0) {
+      const nItems = catId === 'numbers' ? getNumbersStageEffectiveItemCount(activeIdx) : getItemsForStage(catId, activeIdx).length;
+      const winSize = Math.max(8, Math.round(nItems * (overrides[catId]?.windowMultiplier || PRESET_WINDOW_MULTIPLIER)));
+      const sampleLen = Math.min(speak.total, winSize);
+      const sampleCorrect = Math.round((speak.correct / speak.total) * sampleLen);
+      const seeded = [];
+      for (let i = 0; i < sampleLen; i += 1) {
+        seeded.push(i >= sampleLen - sampleCorrect);
+      }
+      prog.recentOutcomes = seeded;
+    }
+
+    const snap = getProgressionSnapshot(catId);
+    if (snap.canCompleteStage && !snap.isExamStage) {
+      const completedSet = new Set(Array.isArray(prog.completedStages) ? prog.completedStages : []);
+      if (!completedSet.has(activeIdx)) {
+        completedSet.add(activeIdx);
+        prog.completedStages = Array.from(completedSet).sort((a, b) => a - b);
+        stagesUnlocked += 1;
+        // Advance to next incomplete stage if available
+        let nextIdx = activeIdx;
+        for (let i = activeIdx + 1; i < cat.stages.length; i += 1) {
+          if (!completedSet.has(i)) {
+            nextIdx = i;
+            break;
+          }
+        }
+        if (nextIdx !== activeIdx) {
+          if (!prog.stageSkills || typeof prog.stageSkills !== 'object') prog.stageSkills = {};
+          if (!prog.stageRecentOutcomes || typeof prog.stageRecentOutcomes !== 'object') prog.stageRecentOutcomes = {};
+          prog.stageSkills[activeIdx] = normalizeSkillsMap(prog.skills, prog.stageCorrect || 0, prog.stageTotal || 0, cfg.threshold);
+          prog.stageRecentOutcomes[activeIdx] = Array.isArray(prog.recentOutcomes) ? prog.recentOutcomes.slice(-60) : [];
+          prog.stageIndex = nextIdx;
+          const savedNext = prog.stageSkills[nextIdx];
+          prog.skills = savedNext ? normalizeSkillsMap(savedNext, 0, 0, cfg.threshold) : createEmptySkillsMap();
+          prog.recentOutcomes = Array.isArray(prog.stageRecentOutcomes[nextIdx]) ? prog.stageRecentOutcomes[nextIdx].slice(-60) : [];
+          prog.stageCorrect = prog.skills.speak?.correct || 0;
+          prog.stageTotal = prog.skills.speak?.total || 0;
+          if (catId === state.activeCategory) {
+            activeStageChanged = true;
+          }
+        }
+      }
+    }
+  });
+
+  if (!isTrackingDisabled()) {
+    savePersistedData();
+  }
+  syncProgressionUI();
+  return {
+    topicsCalibrated: details.length,
+    stagesUnlocked,
+    activeStageChanged,
+    details
+  };
 }
 
 export function initProgressionModule(hooks = {}) {

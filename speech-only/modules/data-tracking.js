@@ -55,7 +55,8 @@ let trackingHooks = {
   onUpdateProgression: () => { },
   onEvaluateAchievements: () => { },
   onUpdateTopMetrics: () => { },
-  onBuildStatsTable: () => { }
+  onBuildStatsTable: () => { },
+  onQuestionRecorded: () => { }
 };
 
 export function registerTrackingHooks(hooks = {}) {
@@ -979,4 +980,5 @@ export function recordOutcome(
   updateDailyGoalUI({ triggerMilestone: true });
   trackingHooks.onUpdateTopMetrics();
   trackingHooks.onBuildStatsTable(false);
+  trackingHooks.onQuestionRecorded();
 }

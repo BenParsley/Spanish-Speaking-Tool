@@ -17,7 +17,6 @@ import {
   micDeviceSelectEl,
   micTestMeterFillEl,
   micTestStatusEl,
-  panamaPhoneticsTipEl,
   playMyAudioBtn,
   playNativeAudioBtn,
   postSpeakActionsEl,
@@ -1112,10 +1111,6 @@ export function resetQuestionVoiceCapture({ resetAttempts = true, resetRetry = t
   if (audioQualityWarningEl) {
     audioQualityWarningEl.textContent = '';
     audioQualityWarningEl.classList.add('hidden');
-  }
-  if (panamaPhoneticsTipEl) {
-    panamaPhoneticsTipEl.textContent = '';
-    panamaPhoneticsTipEl.classList.add('hidden');
   }
   if (typeof voiceHooks.onClearFullAnswerReward === 'function') {
     voiceHooks.onClearFullAnswerReward();
@@ -2215,26 +2210,6 @@ export function commitLocalPronunciationResult() {
     }
   }
 
-  // Panamanian phonetics & prosody coaching callout
-  if (panamaPhoneticsTipEl) {
-    const expPhon = String(panamaNormalization?.expectedPhonetic || '').trim();
-    const rawClean = String(expectedEs || '').toLowerCase().replace(/[¿¡?!.,:;]/g, '').trim();
-    const notes = [];
-    if (!wrongWord && panamaNormalization?.matched && expPhon && expPhon !== rawClean) {
-      notes.push(`Panama es-PA: Natural phonetics accepted ("${expPhon}").`);
-    }
-    if (!wrongWord && prosodyTip && prosodyTip !== tipText) {
-      notes.push(`Rhythm/Stress: ${prosodyTip}`);
-    }
-    if (notes.length > 0) {
-      panamaPhoneticsTipEl.textContent = notes.join(' · ');
-      panamaPhoneticsTipEl.classList.remove('hidden');
-    } else {
-      panamaPhoneticsTipEl.textContent = '';
-      panamaPhoneticsTipEl.classList.add('hidden');
-    }
-  }
-
   if (voiceCommand && voiceCommand !== 'skip') {
     voiceCaptureState.hasSpokenAudio = false;
     voiceCaptureState.questionAudioBlob = null;
@@ -2919,14 +2894,8 @@ export function initVoiceCapture(hooks = {}) {
     pronunciationPhonemeStripEl.addEventListener('click', (e) => {
       const chip = e.target.closest('.phoneme-chip[data-sound]');
       if (!chip) return;
-      const sound = chip.dataset.sound || chip.textContent || '';
-      const tip = getSoundCoachingTip(sound);
       voiceHooks.onManualVoiceAction();
       voiceHooks.onPauseFeedbackForPlayback();
-      if (panamaPhoneticsTipEl) {
-        panamaPhoneticsTipEl.textContent = `Sound "${sound}": ${tip}`;
-        panamaPhoneticsTipEl.classList.remove('hidden');
-      }
       if (!checkZeroVolumePrompt()) {
         const wordWrap = chip.closest('.pron-word[data-word-index]');
         const spokenPhrase = voiceHooks.getSpokenText();

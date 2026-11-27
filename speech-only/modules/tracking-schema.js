@@ -756,6 +756,8 @@ export function loadPersistedData() {
       micDeviceId: typeof parsed.micDeviceId === 'string' ? parsed.micDeviceId : '',
       pronunciationEngine: 'local',
       handsFreeReadPrompt: parsed.handsFreeReadPrompt !== false,
+      autoExportEnabled: parsed.autoExportEnabled !== false,
+      autoExportPath: typeof parsed.autoExportPath === 'string' ? parsed.autoExportPath.trim() : '',
       strictAccents: false,
       needsInitialSave: spkRes.migrated
     };

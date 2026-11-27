@@ -14,7 +14,8 @@ import {
   createDefaultCounts,
   createDefaultJourneyRewards,
   createDefaultProfileData,
-  loadPersistedData
+  loadPersistedData,
+  normalizeProfileData
 } from './tracking-schema.js';
 import { getLocalDateKey } from './utils.js';
 
@@ -70,6 +71,9 @@ export const state = {
   pronunciationEngine: 'local',
   handsFreeMode: false,
   handsFreeReadPrompt: persisted.handsFreeReadPrompt !== false,
+  autoExportEnabled: persisted.autoExportEnabled !== false,
+  autoExportPath: typeof persisted.autoExportPath === 'string' ? persisted.autoExportPath : '',
+  autoExportQuestionCount: 0,
   weakDrillActive: false,
   polishDrillActive: false,
   revisionDrillActive: false,
@@ -279,24 +283,68 @@ export function buildProgressExportPayload() {
     micDeviceId: state.micDeviceId,
     pronunciationEngine: 'local',
     handsFreeReadPrompt: state.handsFreeReadPrompt !== false,
+    autoExportEnabled: state.autoExportEnabled !== false,
+    autoExportPath: typeof state.autoExportPath === 'string' ? state.autoExportPath.trim() : '',
     strictAccents: state.strictAccents
   };
+}
+
+export function resetAllProgressData() {
+  const fresh = createDefaultProfileData();
+  applyProfileToState(fresh);
+  state.weakDrillActive = false;
+  state.polishDrillActive = false;
+  state.revisionDrillActive = false;
+  state.practiceMode = false;
+  state.sessionQuestionSeq = 0;
+  state.currentQuestionSkipRecorded = false;
+  state.lastSkippedBaseKey = '';
+  state.lastSkippedExpectedEs = '';
+  state.recentSkipQuestionsByKey = {};
+  state.skipCooldownUntilByKey = {};
+  state.skipBanTierByKey = {};
+  state.autoExportQuestionCount = 0;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(SNAPSHOTS_STORAGE_KEY);
+  } catch {
+    // Ignore storage removal errors
+  }
+  if (!state.trackingDisabled) {
+    savePersistedData();
+  }
+  return true;
 }
 
 export function importProgressPayload(rawObj) {
   if (!rawObj || typeof rawObj !== 'object' || Array.isArray(rawObj)) {
     return { ok: false, error: 'Invalid JSON backup format.' };
   }
+  const rawProfile =
+    rawObj.speakOnlyProfile && typeof rawObj.speakOnlyProfile === 'object'
+      ? rawObj.speakOnlyProfile
+      : rawObj;
   const hasProgressKeys =
-    'counts' in rawObj ||
-    'phraseCounts' in rawObj ||
-    'categoryProgress' in rawObj ||
-    'dailyCounts' in rawObj;
+    'counts' in rawProfile ||
+    'phraseCounts' in rawProfile ||
+    'categoryProgress' in rawProfile ||
+    'dailyCounts' in rawProfile;
   if (!hasProgressKeys) {
     return { ok: false, error: 'File does not contain valid progress data.' };
   }
 
-  applyProfileToState(rawObj);
+  const now = new Date();
+  const todayKey = getLocalDateKey(now);
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const yesterdayKey = getLocalDateKey(yesterday);
+  const normalized = normalizeProfileData(rawProfile, {
+    isSpeakOnly: true,
+    todayKey,
+    yesterdayKey
+  });
+
+  applyProfileToState(normalized.profile);
   if (typeof rawObj.autoplay === 'boolean') state.autoplay = rawObj.autoplay;
   if (Number.isFinite(Number(rawObj.speed)) && Number(rawObj.speed) > 0) state.speed = Number(rawObj.speed);
   if (Number.isFinite(Number(rawObj.dailyGoal)) && Number(rawObj.dailyGoal) > 0) state.dailyGoal = Number(rawObj.dailyGoal);
@@ -305,6 +353,8 @@ export function importProgressPayload(rawObj) {
   if (rawObj.correctSound !== undefined) state.correctSound = String(rawObj.correctSound);
   if (rawObj.incorrectSound !== undefined) state.incorrectSound = String(rawObj.incorrectSound);
   if (typeof rawObj.handsFreeReadPrompt === 'boolean') state.handsFreeReadPrompt = rawObj.handsFreeReadPrompt;
+  if (typeof rawObj.autoExportEnabled === 'boolean') state.autoExportEnabled = rawObj.autoExportEnabled;
+  if (typeof rawObj.autoExportPath === 'string') state.autoExportPath = rawObj.autoExportPath.trim();
   if (typeof rawObj.strictAccents === 'boolean') state.strictAccents = rawObj.strictAccents;
 
   if (!state.trackingDisabled) {
